@@ -40,12 +40,12 @@ class WLC_Admin_Settings {
     public function sanitize_api_key_on_save($new_value, $old_value) {
         $new_value = trim($new_value);
 
-        // Erlaube leeren Wert (API-Key löschen)
+        // Erlaube leeren Wert (API-Key loeschen)
         if (empty($new_value)) {
             return '';
         }
 
-        // Validiere UUID-Format für Lexware API Keys
+        // Validiere UUID-Format fuer Lexware API Keys
         if (!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i', $new_value)) {
             add_settings_error(
                 'wlc_api_key',
@@ -61,10 +61,9 @@ class WLC_Admin_Settings {
     }
 
     public function register_settings() {
-        // API-Einstellungen
+        // API-Einstellungen - OHNE sanitize_callback damit pre_update_option Filter funktioniert
         register_setting('wlc_api_settings', 'wlc_api_key', array(
             'type' => 'string',
-            'sanitize_callback' => 'sanitize_text_field',
             'default' => ''
         ));
         register_setting('wlc_api_settings', 'wlc_order_statuses');
@@ -209,14 +208,14 @@ class WLC_Admin_Settings {
 
                     <?php if (!empty($api_key)): ?>
                         <p class="description" style="color: green; margin-top: 8px;">
-                            ✓ <?php _e('API Key gespeichert', 'woo-lexware-connector'); ?>
+                            &#10003; <?php _e('API Key gespeichert', 'woo-lexware-connector'); ?>
                             <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;"><?php 
                                 echo substr($api_key, 0, 8) . '-****-****-****-' . substr($api_key, -12); 
                             ?></code>
                         </p>
                     <?php else: ?>
                         <p class="description" style="color: #d63638; margin-top: 8px;">
-                            ✗ <?php _e('Kein API Key konfiguriert', 'woo-lexware-connector'); ?>
+                            &#10007; <?php _e('Kein API Key konfiguriert', 'woo-lexware-connector'); ?>
                         </p>
                     <?php endif; ?>
 
@@ -224,7 +223,7 @@ class WLC_Admin_Settings {
                         <?php _e('Format:', 'woo-lexware-connector'); ?> 
                         <code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code><br>
                         <a href="https://app.lexware.de/settings/#/public-api" target="_blank" rel="noopener">
-                            <?php _e('→ API Key in Lexware erstellen', 'woo-lexware-connector'); ?>
+                            <?php _e('&#8594; API Key in Lexware erstellen', 'woo-lexware-connector'); ?>
                         </a>
                     </p>
                 </td>
@@ -295,7 +294,7 @@ class WLC_Admin_Settings {
                 }
             });
 
-            // Bei Focus Text-Typ setzen für einfaches Editieren
+            // Bei Focus Text-Typ setzen fuer einfaches Editieren
             input.on('focus', function() {
                 if (!isVisible) {
                     $(this).attr('type', 'text');
@@ -404,7 +403,7 @@ class WLC_Admin_Settings {
 
         ?>
         <hr style="margin: 30px 0;">
-        <h3><?php _e('💳 Zahlungsmethoden-spezifische Einstellungen', 'woo-lexware-connector'); ?></h3>
+        <h3>&#128179; <?php _e('Zahlungsmethoden-spezifische Einstellungen', 'woo-lexware-connector'); ?></h3>
         <p class="description">
             <?php _e('Konfiguriere individuelle Zahlungsbedingungen für jede Zahlungsmethode. Leer = Standard-Einstellungen verwenden.', 'woo-lexware-connector'); ?>
         </p>
@@ -452,7 +451,7 @@ class WLC_Admin_Settings {
         </table>
 
         <p class="description" style="margin-top: 10px;">
-            💡 <strong>Beispiele:</strong> PayPal: "Bereits bezahlt per PayPal" + 0 Tage | Rechnung: "Zahlbar innerhalb von 14 Tagen" + 14 Tage
+            &#128161; <strong>Beispiele:</strong> PayPal: "Bereits bezahlt per PayPal" + 0 Tage | Rechnung: "Zahlbar innerhalb von 14 Tagen" + 14 Tage
         </p>
         <?php
     }
