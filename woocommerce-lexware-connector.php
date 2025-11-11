@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name: WooCommerce Lexware Connector
- * Plugin URI: https://psknet.de
+ * Plugin URI: https://github.com/patsch9/woocommerce-lexware-connector
  * Description: Automatische Rechnungserstellung in Lexware Office aus WooCommerce-Bestellungen mit vollständiger Synchronisation und Kundenbereichs-Integration
  * Version: 1.0.0
  * Author: Patrick Schmidt
- * Author URI: https://psknet.de
- * License: GPL v2 or later
- * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Author URI: https://github.com/patsch9
+ * License: MIT
+ * License URI: https://mit-license.org/
  * Text Domain: woo-lexware-connector
  * Domain Path: /languages
  * Requires at least: 5.8
