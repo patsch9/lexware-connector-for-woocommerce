@@ -249,7 +249,14 @@ class WLC_Lexware_API_Client {
     }
 
     private function get_tax_rate_for_class($tax_class, $order) {
-        $tax_rates = WC_Tax::get_rates($tax_class, $order->get_billing_country());
+        // Fix: Nutze Adressarray wie von WC_Tax erwartet!
+        $address = array(
+            'country'   => $order->get_billing_country(),
+            'state'     => $order->get_billing_state(),
+            'postcode'  => $order->get_billing_postcode(),
+            'city'      => $order->get_billing_city()
+        );
+        $tax_rates = WC_Tax::get_rates($tax_class, $address);
         if (!empty($tax_rates)) {
             $rate = reset($tax_rates);
             return (float) $rate['rate'];
