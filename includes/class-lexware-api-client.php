@@ -247,30 +247,26 @@ class WLC_Lexware_API_Client {
     }
 
     private function get_tax_rate_for_class($tax_class, $order, $item = null) {
-        if ($item && method_exists($item, 'get_taxes')) {
-            foreach ($item->get_taxes() as $tax_item) {
-                if (method_exists($tax_item, 'get_rate_percent')) {
-                    $rate_percent = $tax_item->get_rate_percent();
-                    if ($rate_percent) {
-                        return (float)$rate_percent;
+        // Robuste Ermittlung der Steuer für das Line Item
+        if ($item && is_callable([$item, 'get_taxes'])) {
+            $taxes = $item->get_taxes();
+            // WooCommerce liefert ein Array mit 'total' => [tax_id => amount]
+            if (is_array($taxes) && isset($taxes['total']) && is_array($taxes['total'])) {
+                foreach ($taxes['total'] as $tax_id => $tax_amount) {
+                    if ($tax_amount > 0) {
+                        $rate_data = WC_Tax::_get_tax_rate($tax_id);
+                        if (isset($rate_data['tax_rate'])) {
+                            return (float)$rate_data['tax_rate'];
+                        }
                     }
                 }
             }
         }
-        $taxes = $order->get_taxes();
-        if (!empty($taxes)) {
-            $tax = reset($taxes);
-            if (method_exists($tax, 'get_rate_percent')) {
-                $rate_percent = $tax->get_rate_percent();
-                if ($rate_percent) {
-                    return (float)$rate_percent;
-                }
-            } elseif (isset($tax['rate_id'])) {
-                $tax_rate_data = WC_Tax::_get_tax_rate($tax['rate_id']);
-                if (isset($tax_rate_data['tax_rate'])) {
-                    return (float)$tax_rate_data['tax_rate'];
-                }
-            }
+        // Fallback: Berechne Steuersatz aus Gesamtsteuer
+        $total_tax = $order->get_total_tax();
+        $subtotal = $order->get_subtotal();
+        if ($subtotal > 0 && $total_tax > 0) {
+            return round(($total_tax / $subtotal) * 100, 2);
         }
         return 19.0;
     }
