@@ -138,8 +138,7 @@ class WLC_Lexware_API_Client {
             $order->update_meta_data('_wlc_lexware_invoice_number', $response['voucherNumber'] ?? '');
             $order->save();
             $order->add_order_note(
-                sprintf(
-                    __('Lexware Rechnung erstellt: %s (ID: %s)', 'woo-lexware-connector'),
+                sprintf(__('[Lexware Rechnung erstellt: %s (ID: %s)]', 'woo-lexware-connector'),
                     $response['voucherNumber'] ?? '',
                     $response['id']
                 )
@@ -156,8 +155,8 @@ class WLC_Lexware_API_Client {
             'lineItems' => $this->format_line_items($order, true),
             'totalPrice' => array('currency' => $order->get_currency()),
             'taxConditions' => array('taxType' => 'net'),
-            'title' => 'Gutschrift / Stornierung',
-            'introduction' => sprintf('Gutschrift zur Rechnung (Lexware ID: %s)', $original_invoice_id)
+            'title' => __('Gutschrift / Stornierung', 'woo-lexware-connector'),
+            'introduction' => sprintf(__('Gutschrift zur Rechnung (Lexware ID: %s)', 'woo-lexware-connector'), $original_invoice_id)
         );
         $response = $this->request('POST', 'credit-notes?finalize=true', $credit_note_data);
         if (!is_wp_error($response)) {
@@ -165,8 +164,7 @@ class WLC_Lexware_API_Client {
             $order->update_meta_data('_wlc_lexware_invoice_voided', 'yes');
             $order->save();
             $order->add_order_note(
-                sprintf(
-                    __('Lexware Gutschrift erstellt: %s (ID: %s)', 'woo-lexware-connector'),
+                sprintf(__('Lexware Gutschrift erstellt: %s (ID: %s)', 'woo-lexware-connector'),
                     $response['voucherNumber'] ?? '',
                     $response['id']
                 )
@@ -223,7 +221,7 @@ class WLC_Lexware_API_Client {
                 'type' => 'custom',
                 'name' => $item->get_name(),
                 'quantity' => $item->get_quantity() * $multiplier,
-                'unitName' => 'Stück',
+                'unitName' => __('Stück', 'woo-lexware-connector'),
                 'unitPrice' => array(
                     'currency' => $order->get_currency(),
                     'netAmount' => round($order->get_item_subtotal($item, false), 2) * $multiplier,
@@ -235,9 +233,9 @@ class WLC_Lexware_API_Client {
             $shipping_tax_rate = $this->calculate_shipping_tax_rate($order);
             $line_items[] = array(
                 'type' => 'custom',
-                'name' => 'Versandkosten',
+                'name' => __('Versandkosten', 'woo-lexware-connector'),
                 'quantity' => 1 * $multiplier,
-                'unitName' => 'Pauschal',
+                'unitName' => __('Pauschal', 'woo-lexware-connector'),
                 'unitPrice' => array(
                     'currency' => $order->get_currency(),
                     'netAmount' => round($order->get_shipping_total(), 2) * $multiplier,
@@ -249,7 +247,6 @@ class WLC_Lexware_API_Client {
     }
 
     private function get_tax_rate_for_class($tax_class, $order, $item = null) {
-        // SICHER: Hole Steuersatz direkt vom Order Item
         if ($item && method_exists($item, 'get_taxes')) {
             foreach ($item->get_taxes() as $tax_item) {
                 if (method_exists($tax_item, 'get_rate_percent')) {
@@ -260,7 +257,6 @@ class WLC_Lexware_API_Client {
                 }
             }
         }
-        // Fallback: Nutze Order-Taxes falls keine Info im Item
         $taxes = $order->get_taxes();
         if (!empty($taxes)) {
             $tax = reset($taxes);
@@ -270,7 +266,6 @@ class WLC_Lexware_API_Client {
                     return (float)$rate_percent;
                 }
             } elseif (isset($tax['rate_id'])) {
-                // fallback: hole Wert aus Steuerklasse global
                 $tax_rate_data = WC_Tax::_get_tax_rate($tax['rate_id']);
                 if (isset($tax_rate_data['tax_rate'])) {
                     return (float)$tax_rate_data['tax_rate'];
@@ -288,6 +283,34 @@ class WLC_Lexware_API_Client {
         return 19.0;
     }
 
-    // ... Rest wie gehabt ...
+    private function get_payment_terms_for_order($order) {
+        $payment_method = $order->get_payment_method();
+        $specific_terms = get_option('wlc_payment_terms_' . $payment_method, '');
+        if (!empty($specific_terms)) {
+            return $specific_terms;
+        }
+        return __('Zahlbar innerhalb von 14 Tagen ohne Abzug.', 'woo-lexware-connector');
+    }
 
+    private function get_payment_due_days_for_order($order) {
+        $payment_method = $order->get_payment_method();
+        $specific_days = get_option('wlc_payment_due_days_' . $payment_method, '');
+        if ($specific_days !== '' && $specific_days !== false) {
+            return (int) $specific_days;
+        }
+        return (int) get_option('wlc_payment_due_days', 14);
+    }
+
+    public function replace_shortcodes($text, $order) {
+        if (!$order) return $text;
+        $replace = array(
+            '[order_number]'     => $order->get_order_number(),
+            '[order_date]'       => date_i18n(get_option('date_format'), strtotime($order->get_date_created())),
+            '[customer_name]'    => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            '[customer_company]' => $order->get_billing_company(),
+            '[total]'            => wc_price($order->get_total()),
+            '[payment_method]'   => $order->get_payment_method_title(),
+        );
+        return strtr($text, $replace);
+    }
 }
