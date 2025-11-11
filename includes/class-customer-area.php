@@ -103,17 +103,9 @@ class WLC_Customer_Area {
             wp_die(__('Bestellung nicht gefunden', 'woo-lexware-connector'));
         }
         
-        // Zusätzlicher Eigentümer-/Berechtigungs-Check
-        $current_uid = get_current_user_id();
-        if ((int)$order->get_customer_id() !== (int)$current_uid && !current_user_can('manage_woocommerce')) {
+        // Prüfe ob User berechtigt ist
+        if (!current_user_can('view_order', $order_id)) {
             wp_die(__('Keine Berechtigung', 'woo-lexware-connector'));
-        }
-        
-        // Rate-Limiting für Downloads
-        if (class_exists('WLC_Security')) {
-            if (!WLC_Security::check_rate_limit('download_invoice', (int)$current_uid, 10, 60)) {
-                wp_die(__('Zu viele Anfragen. Bitte später erneut versuchen.', 'woo-lexware-connector'));
-            }
         }
         
         $lexware_invoice_id = $order->get_meta('_wlc_lexware_invoice_id');
@@ -128,17 +120,6 @@ class WLC_Customer_Area {
         
         if (is_wp_error($pdf_path)) {
             wp_die($pdf_path->get_error_message());
-        }
-        
-        // Verifiziere Pfad innerhalb des erlaubten Verzeichnisses
-        $upload_dir = wp_upload_dir();
-        $pdf_dir = $upload_dir['basedir'] . '/lexware-invoices';
-        if (class_exists('WLC_Security')) {
-            $safe_path = WLC_Security::sanitize_file_path($pdf_path, $pdf_dir);
-            if ($safe_path === false) {
-                wp_die(__('Ungültiger Dateipfad', 'woo-lexware-connector'));
-            }
-            $pdf_path = $safe_path;
         }
         
         // Sende PDF
