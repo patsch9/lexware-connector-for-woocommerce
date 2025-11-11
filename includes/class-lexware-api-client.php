@@ -25,99 +25,109 @@ class WLC_Lexware_API_Client {
         return $date->format('Y-m-d\TH:i:s.000P');
     }
 
-    public function sync_contact($order) {
-        $existing_contact_id = $order->get_meta('_wlc_lexware_contact_id');
-        
-        // Kontaktdaten vorbereiten
-        $contact_data = array(
-            'version' => 0,
-            'roles' => array(
-                'customer' => new stdClass()  // Wird zu JSON: "customer": {}
-            )
-        );
-        
-        $billing_company = $order->get_billing_company();
-        $is_company = !empty($billing_company);
-        
-        if ($is_company) {
-            // Firmen-Kontakt
-            $contact_data['company'] = array(
-                'name' => $billing_company,
-                'taxNumber' => $order->get_meta('_billing_tax_number') ?: '',
-                'vatRegistrationId' => $order->get_meta('_billing_vat_id') ?: '',
-                'allowTaxFreeInvoices' => !empty($order->get_meta('_billing_vat_id')),
-                'contactPersons' => array(
-                    array(
-                        'firstName' => $order->get_billing_first_name(),
-                        'lastName' => $order->get_billing_last_name(),
-                        'emailAddress' => $order->get_billing_email(),
-                        'phoneNumber' => $order->get_billing_phone() ?: ''
-                    )
-                )
-            );
-        } else {
-            // Privatkunden-Kontakt
-            $contact_data['person'] = array(
-                'firstName' => $order->get_billing_first_name(),
-                'lastName' => $order->get_billing_last_name()
-            );
-        }
-        
-        // Adressen
-        $contact_data['addresses'] = array(
-            'billing' => array(
+public function sync_contact($order) {
+    $existing_contact_id = $order->get_meta('_wlc_lexware_contact_id');
+    
+    // Kontaktdaten vorbereiten
+    $contact_data = array(
+        'version' => 0,
+        'roles' => array(
+            'customer' => new stdClass()
+        )
+    );
+    
+    $billing_company = $order->get_billing_company();
+    $is_company = !empty($billing_company);
+    
+    if ($is_company) {
+        // Firmen-Kontakt - Basis
+        $company_data = array(
+            'name' => $billing_company,
+            'contactPersons' => array(
                 array(
-                    'street' => $order->get_billing_address_1(),
-                    'supplement' => $order->get_billing_address_2() ?: '',
-                    'zip' => $order->get_billing_postcode(),
-                    'city' => $order->get_billing_city(),
-                    'countryCode' => $order->get_billing_country()
+                    'firstName' => $order->get_billing_first_name(),
+                    'lastName' => $order->get_billing_last_name(),
+                    'emailAddress' => $order->get_billing_email(),
+                    'phoneNumber' => $order->get_billing_phone() ?: ''
                 )
             )
         );
         
-        // E-Mail-Adressen
-        if ($order->get_billing_email()) {
-            $contact_data['emailAddresses'] = array(
-                'business' => array($order->get_billing_email())
-            );
+        // Nur hinzufügen wenn Wert vorhanden
+        $tax_number = $order->get_meta('_billing_tax_number');
+        if (!empty($tax_number)) {
+            $company_data['taxNumber'] = $tax_number;
         }
         
-        // Telefonnummern
-        if ($order->get_billing_phone()) {
-            $contact_data['phoneNumbers'] = array(
-                'business' => array($order->get_billing_phone())
-            );
+        $vat_id = $order->get_meta('_billing_vat_id');
+        if (!empty($vat_id)) {
+            $company_data['vatRegistrationId'] = $vat_id;
+            $company_data['allowTaxFreeInvoices'] = true;
         }
         
-        // Kontakt erstellen oder aktualisieren
-        if ($existing_contact_id) {
-            // Update bestehender Kontakt
-            $endpoint = 'contacts/' . $existing_contact_id;
-            
-            // Hole aktuelle Version
-            $existing = $this->request('GET', $endpoint);
-            if (!is_wp_error($existing) && isset($existing['version'])) {
-                $contact_data['version'] = $existing['version'];
-            }
-            
-            $result = $this->request('PUT', $endpoint, $contact_data);
-        } else {
-            // Neuen Kontakt erstellen
-            $result = $this->request('POST', 'contacts', $contact_data);
+        $contact_data['company'] = $company_data;
+    } else {
+        // Privatkunden-Kontakt
+        $contact_data['person'] = array(
+            'firstName' => $order->get_billing_first_name(),
+            'lastName' => $order->get_billing_last_name()
+        );
+    }
+    
+    // Adressen
+    $contact_data['addresses'] = array(
+        'billing' => array(
+            array(
+                'street' => $order->get_billing_address_1(),
+                'zip' => $order->get_billing_postcode(),
+                'city' => $order->get_billing_city(),
+                'countryCode' => $order->get_billing_country()
+            )
+        )
+    );
+    
+    // Supplement nur wenn vorhanden
+    if ($order->get_billing_address_2()) {
+        $contact_data['addresses']['billing'][0]['supplement'] = $order->get_billing_address_2();
+    }
+    
+    // E-Mail-Adressen
+    if ($order->get_billing_email()) {
+        $contact_data['emailAddresses'] = array(
+            'business' => array($order->get_billing_email())
+        );
+    }
+    
+    // Telefonnummern
+    if ($order->get_billing_phone()) {
+        $contact_data['phoneNumbers'] = array(
+            'business' => array($order->get_billing_phone())
+        );
+    }
+    
+    // Kontakt erstellen oder aktualisieren
+    if ($existing_contact_id) {
+        $endpoint = 'contacts/' . $existing_contact_id;
+        $existing = $this->request('GET', $endpoint);
+        if (!is_wp_error($existing) && isset($existing['version'])) {
+            $contact_data['version'] = $existing['version'];
         }
-        
-        if (is_wp_error($result)) {
-            return $result;
-        }
-        
-        // Speichere Kontakt-ID
-        $contact_id = $result['id'];
-        $order->update_meta_data('_wlc_lexware_contact_id', $contact_id);
-        $order->save();
-        
+        $result = $this->request('PUT', $endpoint, $contact_data);
+    } else {
+        $result = $this->request('POST', 'contacts', $contact_data);
+    }
+    
+    if (is_wp_error($result)) {
         return $result;
     }
+    
+    $contact_id = $result['id'];
+    $order->update_meta_data('_wlc_lexware_contact_id', $contact_id);
+    $order->save();
+    
+    return $result;
+}
+
 
     public function create_invoice($order, $contact_id) {
         $finalize = get_option('wlc_finalize_immediately', 'yes') === 'yes';
@@ -125,6 +135,7 @@ class WLC_Lexware_API_Client {
         $voucher_date = $this->format_lexware_date($order_date->getTimestamp());
         $is_company = !empty($order->get_billing_company());
         $tax_type = $is_company ? 'net' : 'gross';
+        
         $invoice_data = array(
             'voucherDate' => $voucher_date,
             'address' => $this->format_address($order),
@@ -136,31 +147,59 @@ class WLC_Lexware_API_Client {
             'introduction' => $this->replace_shortcodes(get_option('wlc_invoice_introduction', 'Vielen Dank für Ihre Bestellung.'), $order),
             'remark' => $this->replace_shortcodes(get_option('wlc_closing_text', 'Vielen Dank für Ihr Vertrauen.'), $order)
         );
+        
         if ($contact_id) {
             $invoice_data['address']['contactId'] = $contact_id;
         }
+        
         $payment_due_days = $this->get_payment_due_days_for_order($order);
         $payment_terms = $this->get_payment_terms_for_order($order);
         $invoice_data['paymentConditions'] = array(
             'paymentTermLabel' => $this->replace_shortcodes($payment_terms, $order),
             'paymentTermDuration' => $payment_due_days
         );
+        
         $endpoint = 'invoices';
         if ($finalize) {
             $endpoint .= '?finalize=true';
         }
+        
+        // Erstelle Rechnung
         $response = $this->request('POST', $endpoint, $invoice_data);
-        if (!is_wp_error($response)) {
-            $order->update_meta_data('_wlc_lexware_invoice_id', $response['id']);
-            $order->update_meta_data('_wlc_lexware_invoice_number', $response['voucherNumber'] ?? '');
-            $order->save();
-            $order->add_order_note(
-                sprintf(__('[Lexware Rechnung erstellt: %s (ID: %s)]', 'woo-lexware-connector'),
-                    $response['voucherNumber'] ?? '',
-                    $response['id']
-                )
-            );
+        
+        if (is_wp_error($response)) {
+            return $response;
         }
+        
+        $invoice_id = $response['id'];
+        $invoice_number = '';
+        
+        // Hole vollständige Rechnungsdaten mit Nummer (nach Finalisierung)
+        if ($finalize) {
+            // Warte kurz, damit Lexoffice die Nummer generieren kann
+            sleep(1);
+            
+            $invoice_details = $this->request('GET', 'invoices/' . $invoice_id);
+            
+            if (!is_wp_error($invoice_details) && isset($invoice_details['voucherNumber'])) {
+                $invoice_number = $invoice_details['voucherNumber'];
+            }
+        }
+        
+        // Speichere Metadaten
+        $order->update_meta_data('_wlc_lexware_invoice_id', $invoice_id);
+        $order->update_meta_data('_wlc_lexware_invoice_number', $invoice_number);
+        $order->save();
+        
+        // Notiz mit Rechnungsnummer
+        $order->add_order_note(
+            sprintf(
+                __('[Lexware Rechnung erstellt: %s (ID: %s)]', 'woo-lexware-connector'),
+                $invoice_number ?: __('Entwurf', 'woo-lexware-connector'),
+                $invoice_id
+            )
+        );
+        
         return $response;
     }
 
@@ -175,18 +214,36 @@ class WLC_Lexware_API_Client {
             'title' => __('Gutschrift / Stornierung', 'woo-lexware-connector'),
             'introduction' => sprintf(__('Gutschrift zur Rechnung (Lexware ID: %s)', 'woo-lexware-connector'), $original_invoice_id)
         );
+        
         $response = $this->request('POST', 'credit-notes?finalize=true', $credit_note_data);
-        if (!is_wp_error($response)) {
-            $order->update_meta_data('_wlc_lexware_credit_note_id', $response['id']);
-            $order->update_meta_data('_wlc_lexware_invoice_voided', 'yes');
-            $order->save();
-            $order->add_order_note(
-                sprintf(__('Lexware Gutschrift erstellt: %s (ID: %s)', 'woo-lexware-connector'),
-                    $response['voucherNumber'] ?? '',
-                    $response['id']
-                )
-            );
+        
+        if (is_wp_error($response)) {
+            return $response;
         }
+        
+        $credit_note_id = $response['id'];
+        $credit_note_number = '';
+        
+        // Hole vollständige Gutschriftsdaten
+        sleep(1);
+        $credit_note_details = $this->request('GET', 'credit-notes/' . $credit_note_id);
+        
+        if (!is_wp_error($credit_note_details) && isset($credit_note_details['voucherNumber'])) {
+            $credit_note_number = $credit_note_details['voucherNumber'];
+        }
+        
+        $order->update_meta_data('_wlc_lexware_credit_note_id', $credit_note_id);
+        $order->update_meta_data('_wlc_lexware_invoice_voided', 'yes');
+        $order->save();
+        
+        $order->add_order_note(
+            sprintf(
+                __('Lexware Gutschrift erstellt: %s (ID: %s)', 'woo-lexware-connector'),
+                $credit_note_number ?: __('Entwurf', 'woo-lexware-connector'),
+                $credit_note_id
+            )
+        );
+        
         return $response;
     }
 
@@ -354,20 +411,23 @@ class WLC_Lexware_API_Client {
         return (int) get_option('wlc_payment_due_days', 14);
     }
 
-public function replace_shortcodes($text, $order) {
-    if (!$order) return $text;
-    
-    $replace = array(
-        '[order_number]'     => $order->get_order_number(),
-        '[order_date]'       => date_i18n(get_option('date_format'), strtotime($order->get_date_created())),
-        '[customer_name]'    => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-        '[customer_company]' => $order->get_billing_company(),
-        '[total]'            => $order->get_total() . ' ' . $order->get_currency(),  // Nur Zahl + Währung
-        '[payment_method]'   => $order->get_payment_method_title(),
-    );
-    
-    return strtr($text, $replace);
-}
+    public function replace_shortcodes($text, $order) {
+        if (!$order) return $text;
+        
+        // Formatiere Preis ohne HTML
+        $total_formatted = number_format_i18n($order->get_total(), 2) . ' ' . $order->get_currency();
+        
+        $replace = array(
+            '[order_number]'     => $order->get_order_number(),
+            '[order_date]'       => date_i18n(get_option('date_format'), strtotime($order->get_date_created())),
+            '[customer_name]'    => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            '[customer_company]' => $order->get_billing_company(),
+            '[total]'            => $total_formatted,
+            '[payment_method]'   => $order->get_payment_method_title(),
+        );
+        
+        return strtr($text, $replace);
+    }
 
     private function request($method, $endpoint, $data = null, $raw_response = false) {
         if (empty($this->api_key)) {
