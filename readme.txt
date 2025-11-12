@@ -23,6 +23,7 @@ Funktionen:
 
 Voraussetzungen:
 * Aktiver Lexware-Account
+* Lexware Office **XL**-Abo oder Testversion (API steht nur in dieser Tarifstufe zur Verfügung)
 * Gültiger Lexware API-Key
 * Externe Datenübertragung zu Lexware-Servern erforderlich
 
@@ -37,6 +38,9 @@ Dieses Plugin überträgt Bestell- und Kundendaten an Lexware (lexware.de). Deta
 == Frequently Asked Questions ==
 = Benötige ich einen Lexware-Account? =
 Ja, ein aktiver Lexware-Account mit API-Zugang ist nötig.
+
+= Welches Lexware-Produkt brauche ich für die API? =
+Die Public API ist aktuell nur mit Lexware Office XL oder während der kostenlosen Testphase nutzbar.
 
 = Welche Daten werden übertragen? =
 Kunden- und Rechnungsdaten werden an die Lexware-API übermittelt.
