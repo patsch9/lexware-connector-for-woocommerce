@@ -19,8 +19,8 @@ class WLC_Invoice_Email extends WC_Email {
     public function __construct() {
         $this->id = 'wlc_invoice';
         $this->customer_email = true;
-        $this->title = __('Lexware Rechnung', 'woo-lexware-connector');
-        $this->description = __('E-Mail mit Rechnung als PDF-Anhang', 'woo-lexware-connector');
+        $this->title = __('Lexware Rechnung', 'lexware-connector-for-woocommerce');
+        $this->description = __('E-Mail mit Rechnung als PDF-Anhang', 'lexware-connector-for-woocommerce');
         $this->template_html = 'emails/customer-invoice.php';
         $this->template_plain = 'emails/plain/customer-invoice.php';
         $this->template_base = WLC_PLUGIN_DIR . 'templates/';
@@ -33,11 +33,11 @@ class WLC_Invoice_Email extends WC_Email {
     }
 
     public function get_default_subject() {
-        return __('Ihre Rechnung für Bestellung {order_number}', 'woo-lexware-connector');
+        return __('Ihre Rechnung für Bestellung {order_number}', 'lexware-connector-for-woocommerce');
     }
 
     public function get_default_heading() {
-        return __('Rechnung für Ihre Bestellung', 'woo-lexware-connector');
+        return __('Rechnung für Ihre Bestellung', 'lexware-connector-for-woocommerce');
     }
 
     public function trigger($order_id, $order = null) {
