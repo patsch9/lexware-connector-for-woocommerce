@@ -524,6 +524,7 @@ function wlc_bulk_action_admin_notice() {
         printf(
             '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
             sprintf(
+                /* translators: %d: Anzahl der Rechnungen, wird durch die tatsächliche Zahl ersetzt. */
                 _n(
                     '%d Rechnung zur Queue hinzugefügt.',
                     '%d Rechnungen zur Queue hinzugefügt.',
