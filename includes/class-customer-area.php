@@ -122,11 +122,27 @@ class WLC_Customer_Area {
             wp_die(esc_html($pdf_path->get_error_message()));
         }
         
-        // Sende PDF
+        // Sende PDF mit WP_Filesystem
+        global $wp_filesystem;
+        if (empty($wp_filesystem)) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        
+        if (!$wp_filesystem->exists($pdf_path)) {
+            wp_die(esc_html__('PDF-Datei nicht gefunden', 'lexware-connector-for-woocommerce'));
+        }
+        
+        $pdf_content = $wp_filesystem->get_contents($pdf_path);
+        
+        if ($pdf_content === false) {
+            wp_die(esc_html__('PDF konnte nicht gelesen werden', 'lexware-connector-for-woocommerce'));
+        }
+        
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="rechnung_' . esc_attr($order->get_order_number()) . '.pdf"');
-        header('Content-Length: ' . filesize($pdf_path));
-        readfile($pdf_path);
+        header('Content-Length: ' . strlen($pdf_content));
+        echo $pdf_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- PDF binary data
         exit;
     }
     

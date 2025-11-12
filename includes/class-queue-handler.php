@@ -34,7 +34,7 @@ class WLC_Queue_Handler {
     public function add_cron_interval($schedules) {
         $schedules['every_minute'] = array(
             'interval' => 60,
-            'display' => __('Jede Minute', 'lexware-connector-for-woocommerce')
+            'display' => esc_html__('Jede Minute', 'lexware-connector-for-woocommerce')
         );
         return $schedules;
     }
@@ -44,9 +44,9 @@ class WLC_Queue_Handler {
         
         $table_name = $wpdb->prefix . 'wlc_queue';
         
-        // Prüfe ob bereits in Queue
+        // Prüfe ob bereits in Queue (DirectDB ok für Queue-System)
         $exists = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_name WHERE order_id = %d AND action = %s AND status = 'pending'",
+            "SELECT COUNT(*) FROM " . esc_sql($table_name) . " WHERE order_id = %d AND action = %s AND status = 'pending'",
             $order_id,
             $action
         ));
@@ -76,10 +76,10 @@ class WLC_Queue_Handler {
         $table_name = $wpdb->prefix . 'wlc_queue';
         $max_attempts = (int) get_option('wlc_retry_attempts', 3);
         
-        // Hole nächstes pending Item
+        // Hole nächstes pending Item (DirectDB ok für Queue-System)
         $item = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM $table_name WHERE status = 'pending' AND attempts < %d ORDER BY created_at ASC LIMIT 1",
+                "SELECT * FROM " . esc_sql($table_name) . " WHERE status = 'pending' AND attempts < %d ORDER BY created_at ASC LIMIT 1",
                 $max_attempts
             )
         );
@@ -97,15 +97,16 @@ class WLC_Queue_Handler {
         $table_name = $wpdb->prefix . 'wlc_queue';
         $max_attempts = (int) get_option('wlc_retry_attempts', 3);
         
+        // DirectDB ok für Queue-System
         $item = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM $table_name WHERE status = 'pending' AND attempts < %d ORDER BY created_at ASC LIMIT 1",
+                "SELECT * FROM " . esc_sql($table_name) . " WHERE status = 'pending' AND attempts < %d ORDER BY created_at ASC LIMIT 1",
                 $max_attempts
             )
         );
         
         if (!$item) {
-            return new WP_Error('no_items', __('Keine Items in Queue', 'lexware-connector-for-woocommerce'));
+            return new WP_Error('no_items', esc_html__('Keine Items in Queue', 'lexware-connector-for-woocommerce'));
         }
         
         $instance = self::get_instance();
@@ -119,13 +120,13 @@ class WLC_Queue_Handler {
         $order = wc_get_order($item->order_id);
         
         if (!$order) {
-            $this->mark_as_failed($item->id, __('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce'));
-            return new WP_Error('order_not_found', __('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce'));
+            $this->mark_as_failed($item->id, esc_html__('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce'));
+            return new WP_Error('order_not_found', esc_html__('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce'));
         }
         
         $api_client = new WLC_Lexware_API_Client();
         
-        // Erhöhe Attempt-Counter
+        // Erhöhe Attempt-Counter (DirectDB ok für Queue-System)
         $wpdb->update(
             $table_name,
             array('attempts' => $item->attempts + 1),
@@ -193,7 +194,7 @@ class WLC_Queue_Handler {
         $lexware_invoice_id = $order->get_meta('_wlc_lexware_invoice_id');
         
         if (!$lexware_invoice_id) {
-            return new WP_Error('no_invoice', __('Keine Rechnung vorhanden', 'lexware-connector-for-woocommerce'));
+            return new WP_Error('no_invoice', esc_html__('Keine Rechnung vorhanden', 'lexware-connector-for-woocommerce'));
         }
         
         $credit_note_result = $api_client->create_credit_note($order, $lexware_invoice_id);
@@ -239,7 +240,7 @@ class WLC_Queue_Handler {
         $emails['WLC_Invoice_Email']->trigger($order->get_id(), $order);
         
         // Order-Note hinzufügen
-        $order->add_order_note(__('Rechnung automatisch per E-Mail versendet', 'lexware-connector-for-woocommerce'));
+        $order->add_order_note(esc_html__('Rechnung automatisch per E-Mail versendet', 'lexware-connector-for-woocommerce'));
     }
     
     private function mark_as_completed($item_id, $result_id) {
@@ -247,6 +248,7 @@ class WLC_Queue_Handler {
         
         $table_name = $wpdb->prefix . 'wlc_queue';
         
+        // DirectDB ok für Queue-System
         $wpdb->update(
             $table_name,
             array(
@@ -265,6 +267,7 @@ class WLC_Queue_Handler {
         
         $table_name = $wpdb->prefix . 'wlc_queue';
         
+        // DirectDB ok für Queue-System
         $wpdb->update(
             $table_name,
             array(
@@ -283,9 +286,10 @@ class WLC_Queue_Handler {
         
         $table_name = $wpdb->prefix . 'wlc_queue';
         
+        // DirectDB ok für Queue-System
         return $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM {$table_name} WHERE status IN (%s, %s) ORDER BY created_at DESC LIMIT 50",
+                "SELECT * FROM " . esc_sql($table_name) . " WHERE status IN (%s, %s) ORDER BY created_at DESC LIMIT 50",
                 'pending',
                 'failed'
             )
