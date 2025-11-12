@@ -47,12 +47,12 @@ class WLC_Customer_Area {
         
         ?>
         <section class="wlc-invoice-download" style="margin-top: 20px;">
-            <h2><?php _e('Rechnung', 'woo-lexware-connector'); ?></h2>
+            <h2><?php esc_html_e('Rechnung', 'lexware-connector-for-woocommerce'); ?></h2>
             <p>
                 <a href="<?php echo esc_url($download_url); ?>" 
                    class="button" 
                    target="_blank">
-                    <?php _e('Rechnung herunterladen (PDF)', 'woo-lexware-connector'); ?>
+                    <?php esc_html_e('Rechnung herunterladen (PDF)', 'lexware-connector-for-woocommerce'); ?>
                 </a>
             </p>
         </section>
@@ -66,7 +66,7 @@ class WLC_Customer_Area {
             $new_columns[$key] = $name;
             
             if ($key === 'order-total') {
-                $new_columns['invoice'] = __('Rechnung', 'woo-lexware-connector');
+                $new_columns['invoice'] = esc_html__('Rechnung', 'lexware-connector-for-woocommerce');
             }
         }
         
@@ -79,7 +79,7 @@ class WLC_Customer_Area {
         
         if ($lexware_invoice_id && $invoice_voided !== 'yes') {
             $download_url = $this->get_download_url($order->get_id());
-            echo '<a href="' . esc_url($download_url) . '" target="_blank">' . __('PDF', 'woo-lexware-connector') . '</a>';
+            echo '<a href="' . esc_url($download_url) . '" target="_blank">' . esc_html__('PDF', 'lexware-connector-for-woocommerce') . '</a>';
         } else {
             echo '–';
         }
@@ -91,27 +91,27 @@ class WLC_Customer_Area {
         }
         
         $order_id = intval($_GET['order_id']);
-        $nonce = sanitize_text_field($_GET['nonce']);
+        $nonce = isset($_GET['nonce']) ? sanitize_text_field(wp_unslash($_GET['nonce'])) : '';
         
         if (!wp_verify_nonce($nonce, 'wlc_download_' . $order_id)) {
-            wp_die(__('Ungültiger Sicherheitsschlüssel', 'woo-lexware-connector'));
+            wp_die(esc_html__('Ungültiger Sicherheitsschlüssel', 'lexware-connector-for-woocommerce'));
         }
         
         $order = wc_get_order($order_id);
         
         if (!$order) {
-            wp_die(__('Bestellung nicht gefunden', 'woo-lexware-connector'));
+            wp_die(esc_html__('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce'));
         }
         
         // Prüfe ob User berechtigt ist
         if (!current_user_can('view_order', $order_id)) {
-            wp_die(__('Keine Berechtigung', 'woo-lexware-connector'));
+            wp_die(esc_html__('Keine Berechtigung', 'lexware-connector-for-woocommerce'));
         }
         
         $lexware_invoice_id = $order->get_meta('_wlc_lexware_invoice_id');
         
         if (!$lexware_invoice_id) {
-            wp_die(__('Keine Rechnung vorhanden', 'woo-lexware-connector'));
+            wp_die(esc_html__('Keine Rechnung vorhanden', 'lexware-connector-for-woocommerce'));
         }
         
         // Lade PDF herunter
@@ -119,14 +119,30 @@ class WLC_Customer_Area {
         $pdf_path = $api_client->download_invoice_pdf($lexware_invoice_id);
         
         if (is_wp_error($pdf_path)) {
-            wp_die($pdf_path->get_error_message());
+            wp_die(esc_html($pdf_path->get_error_message()));
         }
         
-        // Sende PDF
+        // Sende PDF mit WP_Filesystem
+        global $wp_filesystem;
+        if (empty($wp_filesystem)) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        
+        if (!$wp_filesystem->exists($pdf_path)) {
+            wp_die(esc_html__('PDF-Datei nicht gefunden', 'lexware-connector-for-woocommerce'));
+        }
+        
+        $pdf_content = $wp_filesystem->get_contents($pdf_path);
+        
+        if ($pdf_content === false) {
+            wp_die(esc_html__('PDF konnte nicht gelesen werden', 'lexware-connector-for-woocommerce'));
+        }
+        
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="rechnung_' . $order->get_order_number() . '.pdf"');
-        header('Content-Length: ' . filesize($pdf_path));
-        readfile($pdf_path);
+        header('Content-Disposition: attachment; filename="rechnung_' . esc_attr($order->get_order_number()) . '.pdf"');
+        header('Content-Length: ' . strlen($pdf_content));
+        echo $pdf_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- PDF binary data
         exit;
     }
     

@@ -29,8 +29,8 @@ class WLC_Admin_Settings {
     public function add_admin_menu() {
         add_submenu_page(
             'woocommerce',
-            __('Lexware Connector', 'woo-lexware-connector'),
-            __('Lexware Connector', 'woo-lexware-connector'),
+            esc_html__('Lexware Connector', 'lexware-connector-for-woocommerce'),
+            esc_html__('Lexware Connector', 'lexware-connector-for-woocommerce'),
             'manage_woocommerce',
             'wlc-settings',
             array($this, 'render_settings_page')
@@ -48,23 +48,73 @@ class WLC_Admin_Settings {
     public function register_settings() {
         register_setting('wlc_api_settings', 'wlc_api_key', array(
             'type' => 'string',
-            'default' => ''
+            'default' => '',
+            'sanitize_callback' => 'sanitize_text_field'
         ));
-        register_setting('wlc_api_settings', 'wlc_order_statuses');
-        register_setting('wlc_api_settings', 'wlc_retry_attempts');
-        register_setting('wlc_invoice_settings', 'wlc_invoice_title');
-        register_setting('wlc_invoice_settings', 'wlc_invoice_introduction');
-        register_setting('wlc_invoice_settings', 'wlc_payment_terms');
-        register_setting('wlc_invoice_settings', 'wlc_payment_due_days');
-        register_setting('wlc_invoice_settings', 'wlc_closing_text');
-        register_setting('wlc_invoice_settings', 'wlc_finalize_immediately');
+        register_setting('wlc_api_settings', 'wlc_order_statuses', array(
+            'type' => 'array',
+            'sanitize_callback' => array($this, 'sanitize_order_statuses')
+        ));
+        register_setting('wlc_api_settings', 'wlc_retry_attempts', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_invoice_title', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_invoice_introduction', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_payment_terms', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_payment_due_days', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_closing_text', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field'
+        ));
+        register_setting('wlc_invoice_settings', 'wlc_finalize_immediately', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
         $this->register_payment_method_settings();
-        register_setting('wlc_sync_settings', 'wlc_auto_sync_contacts');
-        register_setting('wlc_sync_settings', 'wlc_show_in_customer_area');
-        register_setting('wlc_sync_settings', 'wlc_shipping_as_line_item');
-        register_setting('wlc_sync_settings', 'wlc_enable_logging');
-        register_setting('wlc_sync_settings', 'wlc_email_on_error');
-        register_setting('wlc_sync_settings', 'wlc_auto_send_email');
+        register_setting('wlc_sync_settings', 'wlc_auto_sync_contacts', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_sync_settings', 'wlc_show_in_customer_area', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_sync_settings', 'wlc_shipping_as_line_item', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_sync_settings', 'wlc_enable_logging', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_sync_settings', 'wlc_email_on_error', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('wlc_sync_settings', 'wlc_auto_send_email', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+    }
+
+    public function sanitize_order_statuses($value) {
+        if (!is_array($value)) {
+            return array();
+        }
+        return array_map('sanitize_text_field', $value);
     }
 
     private function register_payment_method_settings() {
@@ -75,8 +125,14 @@ class WLC_Admin_Settings {
         foreach ($payment_gateways as $gateway) {
             if ($gateway->enabled === 'yes') {
                 $gateway_id = $gateway->id;
-                register_setting('wlc_invoice_settings', 'wlc_payment_terms_' . $gateway_id);
-                register_setting('wlc_invoice_settings', 'wlc_payment_due_days_' . $gateway_id);
+                register_setting('wlc_invoice_settings', 'wlc_payment_terms_' . $gateway_id, array(
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ));
+                register_setting('wlc_invoice_settings', 'wlc_payment_due_days_' . $gateway_id, array(
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field'
+                ));
             }
         }
     }
@@ -93,31 +149,32 @@ class WLC_Admin_Settings {
         if (!current_user_can('manage_woocommerce')) {
             return;
         }
-        if (isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true') {
+        // Nonce wird von WordPress Settings API automatisch geprüft
+        if (isset($_GET['settings-updated']) && sanitize_text_field(wp_unslash($_GET['settings-updated'])) === 'true') { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
             add_settings_error(
                 'wlc_messages',
                 'wlc_message',
-                __('Einstellungen gespeichert', 'woo-lexware-connector'),
+                esc_html__('Einstellungen gespeichert', 'lexware-connector-for-woocommerce'),
                 'updated'
             );
         }
         settings_errors('wlc_messages');
-        $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'api';
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field(wp_unslash($_GET['tab'])) : 'api'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         ?>
         <div class="wrap wlc-settings-wrap">
-            <h1><?php _e('WooCommerce Lexware Connector', 'woo-lexware-connector'); ?></h1>
+            <h1><?php esc_html_e('WooCommerce Lexware Connector', 'lexware-connector-for-woocommerce'); ?></h1>
             <h2 class="nav-tab-wrapper">
                 <a href="?page=wlc-settings&tab=api" class="nav-tab <?php echo $active_tab === 'api' ? 'nav-tab-active' : ''; ?>">
-                    <?php _e('API-Konfiguration', 'woo-lexware-connector'); ?>
+                    <?php esc_html_e('API-Konfiguration', 'lexware-connector-for-woocommerce'); ?>
                 </a>
                 <a href="?page=wlc-settings&tab=invoice" class="nav-tab <?php echo $active_tab === 'invoice' ? 'nav-tab-active' : ''; ?>">
-                    <?php _e('Rechnungseinstellungen', 'woo-lexware-connector'); ?>
+                    <?php esc_html_e('Rechnungseinstellungen', 'lexware-connector-for-woocommerce'); ?>
                 </a>
                 <a href="?page=wlc-settings&tab=sync" class="nav-tab <?php echo $active_tab === 'sync' ? 'nav-tab-active' : ''; ?>">
-                    <?php _e('Synchronisation', 'woo-lexware-connector'); ?>
+                    <?php esc_html_e('Synchronisation', 'lexware-connector-for-woocommerce'); ?>
                 </a>
                 <a href="?page=wlc-settings&tab=logs" class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>">
-                    <?php _e('Logs & Queue', 'woo-lexware-connector'); ?>
+                    <?php esc_html_e('Logs & Queue', 'lexware-connector-for-woocommerce'); ?>
                 </a>
             </h2>
             <?php if ($active_tab !== 'logs'): ?>
@@ -153,7 +210,7 @@ class WLC_Admin_Settings {
         <table class="form-table">
             <tr>
                 <th scope="row">
-                    <label for="wlc_api_key"><?php _e('Lexware API Key', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_api_key"><?php esc_html_e('Lexware API Key', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <div style="position: relative; display: inline-block; width: 100%; max-width: 500px;">
@@ -162,30 +219,30 @@ class WLC_Admin_Settings {
                                name="wlc_api_key"
                                value=""
                                class="regular-text"
-                               placeholder="<?php echo esc_attr($api_key ? __('Gespeichert – leer lassen, um nicht zu ändern', 'woo-lexware-connector') : __('API-Schlüssel eingeben', 'woo-lexware-connector')); ?>"
+                               placeholder="<?php echo esc_attr($api_key ? esc_html__('Gespeichert – leer lassen, um nicht zu ändern', 'lexware-connector-for-woocommerce') : esc_html__('API-Schlüssel eingeben', 'lexware-connector-for-woocommerce')); ?>"
                                autocomplete="off"
                                spellcheck="false"
                                style="font-family: monospace; letter-spacing: 1px; padding-right: 45px; width: 100%;">
                         <button type="button"
                                 class="button button-secondary wlc-toggle-api-key"
                                 style="position: absolute; right: 5px; top: 1px; height: 28px; padding: 0 8px;"
-                                title="<?php esc_attr_e('API-Key anzeigen/verbergen', 'woo-lexware-connector'); ?>">
+                                title="<?php esc_attr_e('API-Key anzeigen/verbergen', 'lexware-connector-for-woocommerce'); ?>">
                             <span class="dashicons dashicons-visibility" style="line-height: 28px;"></span>
                         </button>
                     </div>
                     <p class="description" style="margin-top: 8px;">
-                        <?php echo $api_key ? __('Ein API-Key ist gespeichert. Gib einen neuen ein, um ihn zu ersetzen – leer lassen, um nichts zu ändern.', 'woo-lexware-connector') : __('Bitte API-Key speichern.', 'woo-lexware-connector'); ?>
+                        <?php echo esc_html($api_key ? esc_html__('Ein API-Key ist gespeichert. Gib einen neuen ein, um ihn zu ersetzen – leer lassen, um nichts zu ändern.', 'lexware-connector-for-woocommerce') : esc_html__('Bitte API-Key speichern.', 'lexware-connector-for-woocommerce')); ?>
                     </p>
                     <p class="description" style="margin-top: 8px;">
                         <a href="https://app.lexware.de/settings/#/public-api" target="_blank" rel="noopener">
-                            <?php _e('API Key in Lexware erstellen', 'woo-lexware-connector'); ?>
+                            <?php esc_html_e('API Key in Lexware erstellen', 'lexware-connector-for-woocommerce'); ?>
                         </a>
                     </p>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label><?php _e('Rechnungen erstellen bei Status', 'woo-lexware-connector'); ?></label>
+                    <label><?php esc_html_e('Rechnungen erstellen bei Status', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <?php
@@ -195,11 +252,11 @@ class WLC_Admin_Settings {
                     }
                     $order_statuses = wc_get_order_statuses();
                     foreach ($order_statuses as $status => $label) {
-                        $checked = in_array($status, $selected_statuses) ? 'checked' : '';
+                        $checked = in_array($status, $selected_statuses, true) ? 'checked' : '';
                         ?>
                         <label style="display: block; margin: 5px 0;">
                             <input type="checkbox" name="wlc_order_statuses[]"
-                                   value="<?php echo esc_attr($status); ?>" <?php echo $checked; ?>>
+                                   value="<?php echo esc_attr($status); ?>" <?php echo esc_attr($checked); ?>>
                             <?php echo esc_html($label); ?>
                         </label>
                         <?php
@@ -209,14 +266,14 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_retry_attempts"><?php _e('Wiederholungsversuche', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_retry_attempts"><?php esc_html_e('Wiederholungsversuche', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <input type="number" id="wlc_retry_attempts" name="wlc_retry_attempts"
                            value="<?php echo esc_attr(get_option('wlc_retry_attempts', '3')); ?>"
                            min="0" max="10" class="small-text">
                     <p class="description">
-                        <?php _e('Anzahl der automatischen Wiederholungsversuche bei API-Fehlern', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Anzahl der automatischen Wiederholungsversuche bei API-Fehlern', 'lexware-connector-for-woocommerce'); ?>
                     </p>
                 </td>
             </tr>
@@ -248,7 +305,7 @@ class WLC_Admin_Settings {
         <table class="form-table">
             <tr>
                 <th scope="row">
-                    <label for="wlc_invoice_title"><?php _e('Rechnungstitel', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_invoice_title"><?php esc_html_e('Rechnungstitel', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <input type="text" id="wlc_invoice_title" name="wlc_invoice_title"
@@ -259,7 +316,7 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_invoice_introduction"><?php _e('Einleitungstext', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_invoice_introduction"><?php esc_html_e('Einleitungstext', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <textarea id="wlc_invoice_introduction" name="wlc_invoice_introduction"
@@ -269,7 +326,7 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_payment_terms"><?php _e('Standard Zahlungsbedingungen', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_payment_terms"><?php esc_html_e('Standard Zahlungsbedingungen', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <textarea id="wlc_payment_terms" name="wlc_payment_terms"
@@ -278,7 +335,7 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_payment_due_days"><?php _e('Standard Zahlungsziel (Tage)', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_payment_due_days"><?php esc_html_e('Standard Zahlungsziel (Tage)', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <input type="number" id="wlc_payment_due_days" name="wlc_payment_due_days"
@@ -288,7 +345,7 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_closing_text"><?php _e('Schlusstext', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_closing_text"><?php esc_html_e('Schlusstext', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <textarea id="wlc_closing_text" name="wlc_closing_text"
@@ -297,13 +354,13 @@ class WLC_Admin_Settings {
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_finalize_immediately"><?php _e('Rechnungen sofort abschließen', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_finalize_immediately"><?php esc_html_e('Rechnungen sofort abschließen', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_finalize_immediately" name="wlc_finalize_immediately"
                                value="yes" <?php checked(get_option('wlc_finalize_immediately', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, Rechnungen direkt im Status "open" erstellen', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Rechnungen direkt im Status "open" erstellen', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
@@ -325,16 +382,16 @@ class WLC_Admin_Settings {
         }
         ?>
         <hr style="margin: 30px 0;">
-        <h3>💳 <?php _e('Zahlungsmethoden-spezifische Einstellungen', 'woo-lexware-connector'); ?></h3>
+        <h3>💳 <?php esc_html_e('Zahlungsmethoden-spezifische Einstellungen', 'lexware-connector-for-woocommerce'); ?></h3>
         <p class="description">
-            <?php _e('Konfiguriere individuelle Zahlungsbedingungen für jede Zahlungsmethode. Leer = Standard-Einstellungen verwenden.', 'woo-lexware-connector'); ?>
+            <?php esc_html_e('Konfiguriere individuelle Zahlungsbedingungen für jede Zahlungsmethode. Leer = Standard-Einstellungen verwenden.', 'lexware-connector-for-woocommerce'); ?>
         </p>
         <table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
             <thead>
                 <tr>
-                    <th style="width: 200px;"><?php _e('Zahlungsmethode', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Zahlungsbedingungen', 'woo-lexware-connector'); ?></th>
-                    <th style="width: 120px;"><?php _e('Zahlungsziel (Tage)', 'woo-lexware-connector'); ?></th>
+                    <th style="width: 200px;"><?php esc_html_e('Zahlungsmethode', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Zahlungsbedingungen', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th style="width: 120px;"><?php esc_html_e('Zahlungsziel (Tage)', 'lexware-connector-for-woocommerce'); ?></th>
                 </tr>
             </thead>
             <tbody>
@@ -381,76 +438,76 @@ class WLC_Admin_Settings {
         <table class="form-table">
             <tr>
                 <th scope="row">
-                    <label for="wlc_auto_sync_contacts"><?php _e('Kontakte automatisch synchronisieren', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_auto_sync_contacts"><?php esc_html_e('Kontakte automatisch synchronisieren', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_auto_sync_contacts" name="wlc_auto_sync_contacts" 
                                value="yes" <?php checked(get_option('wlc_auto_sync_contacts', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, Kundendaten automatisch in Lexware erstellen/aktualisieren', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Kundendaten automatisch in Lexware erstellen/aktualisieren', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_show_in_customer_area"><?php _e('Rechnungen im Kundenbereich anzeigen', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_show_in_customer_area"><?php esc_html_e('Rechnungen im Kundenbereich anzeigen', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_show_in_customer_area" name="wlc_show_in_customer_area" 
                                value="yes" <?php checked(get_option('wlc_show_in_customer_area', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, Rechnungs-PDFs im "Mein Konto"-Bereich anzeigen', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Rechnungs-PDFs im "Mein Konto"-Bereich anzeigen', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_shipping_as_line_item"><?php _e('Versandkosten als Position', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_shipping_as_line_item"><?php esc_html_e('Versandkosten als Position', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_shipping_as_line_item" name="wlc_shipping_as_line_item" 
                                value="yes" <?php checked(get_option('wlc_shipping_as_line_item', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, Versandkosten als separate Rechnungsposition übertragen', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Versandkosten als separate Rechnungsposition übertragen', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_enable_logging"><?php _e('Logging aktivieren', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_enable_logging"><?php esc_html_e('Logging aktivieren', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_enable_logging" name="wlc_enable_logging" 
                                value="yes" <?php checked(get_option('wlc_enable_logging', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, API-Aufrufe und Fehler protokollieren', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, API-Aufrufe und Fehler protokollieren', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_email_on_error"><?php _e('E-Mail bei Fehlern', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_email_on_error"><?php esc_html_e('E-Mail bei Fehlern', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_email_on_error" name="wlc_email_on_error" 
                                value="yes" <?php checked(get_option('wlc_email_on_error', 'yes'), 'yes'); ?>>
-                        <?php _e('Ja, Admin per E-Mail über Fehler benachrichtigen', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Admin per E-Mail über Fehler benachrichtigen', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                 </td>
             </tr>
             <tr>
                 <th scope="row">
-                    <label for="wlc_auto_send_email"><?php _e('Rechnung automatisch per E-Mail versenden', 'woo-lexware-connector'); ?></label>
+                    <label for="wlc_auto_send_email"><?php esc_html_e('Rechnung automatisch per E-Mail versenden', 'lexware-connector-for-woocommerce'); ?></label>
                 </th>
                 <td>
                     <label>
                         <input type="checkbox" id="wlc_auto_send_email" name="wlc_auto_send_email" 
                                value="yes" <?php checked(get_option('wlc_auto_send_email', 'no'), 'yes'); ?>>
-                        <?php _e('Ja, Rechnung automatisch nach Erstellung per E-Mail an Kunden senden', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Ja, Rechnung automatisch nach Erstellung per E-Mail an Kunden senden', 'lexware-connector-for-woocommerce'); ?>
                     </label>
                     <p class="description">
-                        <?php _e('Die E-Mail-Vorlage kann unter WooCommerce → Einstellungen → E-Mails angepasst werden.', 'woo-lexware-connector'); ?>
+                        <?php esc_html_e('Die E-Mail-Vorlage kann unter WooCommerce → Einstellungen → E-Mails angepasst werden.', 'lexware-connector-for-woocommerce'); ?>
                     </p>
                 </td>
             </tr>
@@ -462,71 +519,72 @@ class WLC_Admin_Settings {
         $queue_items = WLC_Queue_Handler::get_queue_status();
         $error_logs = get_option('wlc_error_logs', array());
         ?>
-        <h2><?php _e('Queue-Status', 'woo-lexware-connector'); ?></h2>
+        <h2><?php esc_html_e('Queue-Status', 'lexware-connector-for-woocommerce'); ?></h2>
         <p>
-            <a href="<?php echo admin_url('admin.php?page=wlc-settings&tab=logs&wlc_process_queue=1'); ?>" 
-               class="button button-primary"><?php _e('Queue jetzt verarbeiten', 'woo-lexware-connector'); ?></a>
-            <a href="<?php echo admin_url('admin.php?page=wlc-settings&tab=logs&wlc_clear_queue=1'); ?>" 
+            <a href="<?php echo esc_url(admin_url('admin.php?page=wlc-settings&tab=logs&wlc_process_queue=1')); ?>" 
+               class="button button-primary"><?php esc_html_e('Queue jetzt verarbeiten', 'lexware-connector-for-woocommerce'); ?></a>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=wlc-settings&tab=logs&wlc_clear_queue=1')); ?>" 
                class="button button-secondary"
-               onclick="return confirm('<?php _e('Queue wirklich leeren?', 'woo-lexware-connector'); ?>');">
-                <?php _e('Queue leeren', 'woo-lexware-connector'); ?></a>
+               onclick="return confirm('<?php esc_attr_e('Queue wirklich leeren?', 'lexware-connector-for-woocommerce'); ?>');">
+                <?php esc_html_e('Queue leeren', 'lexware-connector-for-woocommerce'); ?></a>
         </p>
         <?php
-        if (isset($_GET['wlc_process_queue']) && current_user_can('manage_woocommerce')) {
+        // Nonce wird hier nicht benötigt, da nur Lese-Aktion (GET parameter von selbst gesetzt)
+        if (isset($_GET['wlc_process_queue']) && current_user_can('manage_woocommerce')) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
             $result = WLC_Queue_Handler::process_next_item();
             if (is_wp_error($result)) {
-                echo '<div class="notice notice-error"><p>Fehler: ' . esc_html($result->get_error_message()) . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . esc_html__('Fehler: ', 'lexware-connector-for-woocommerce') . esc_html($result->get_error_message()) . '</p></div>';
             } else {
-                echo '<div class="notice notice-success"><p>' . __('Queue-Item erfolgreich verarbeitet!', 'woo-lexware-connector') . '</p></div>';
+                echo '<div class="notice notice-success"><p>' . esc_html__('Queue-Item erfolgreich verarbeitet!', 'lexware-connector-for-woocommerce') . '</p></div>';
             }
         }
-        if (isset($_GET['wlc_clear_queue']) && current_user_can('manage_woocommerce')) {
+        if (isset($_GET['wlc_clear_queue']) && current_user_can('manage_woocommerce')) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
             global $wpdb;
             $table_name = $wpdb->prefix . 'wlc_queue';
-            $wpdb->query("DELETE FROM $table_name WHERE status = 'failed'");
-            echo '<div class="notice notice-success"><p>' . __('Fehlgeschlagene Queue-Items gelöscht!', 'woo-lexware-connector') . '</p></div>';
+            $wpdb->query($wpdb->prepare("DELETE FROM " . esc_sql($table_name) . " WHERE status = %s", 'failed')); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+            echo '<div class="notice notice-success"><p>' . esc_html__('Fehlgeschlagene Queue-Items gelöscht!', 'lexware-connector-for-woocommerce') . '</p></div>';
         }
         ?>
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th><?php _e('Bestellung', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Aktion', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Status', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Versuche', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Erstellt', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Fehlermeldung', 'woo-lexware-connector'); ?></th>
+                    <th><?php esc_html_e('Bestellung', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Aktion', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Status', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Versuche', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Erstellt', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Fehlermeldung', 'lexware-connector-for-woocommerce'); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($queue_items)): ?>
-                    <tr><td colspan="6"><?php _e('Queue ist leer', 'woo-lexware-connector'); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e('Queue ist leer', 'lexware-connector-for-woocommerce'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($queue_items as $item): ?>
                         <tr>
-                            <td><a href="<?php echo admin_url('post.php?post=' . $item->order_id . '&action=edit'); ?>">#<?php echo $item->order_id; ?></a></td>
+                            <td><a href="<?php echo esc_url(admin_url('post.php?post=' . absint($item->order_id) . '&action=edit')); ?>">#<?php echo esc_html($item->order_id); ?></a></td>
                             <td><?php echo esc_html($item->action); ?></td>
                             <td><?php echo esc_html($item->status); ?></td>
                             <td><?php echo esc_html($item->attempts); ?></td>
                             <td><?php echo esc_html($item->created_at); ?></td>
-                            <td><?php echo esc_html($item->error_message ?: '-'); ?></td>
+                            <td><?php echo esc_html($item->error_message ?: '–'); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </tbody>
         </table>
-        <h2 style="margin-top: 40px;"> <?php _e('Fehler-Log (letzte 20)', 'woo-lexware-connector'); ?></h2>
+        <h2 style="margin-top: 40px;"> <?php esc_html_e('Fehler-Log (letzte 20)', 'lexware-connector-for-woocommerce'); ?></h2>
         <table class="wp-list-table widefat fixed striped">
             <thead>
                 <tr>
-                    <th><?php _e('Zeit', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Titel', 'woo-lexware-connector'); ?></th>
-                    <th><?php _e('Nachricht', 'woo-lexware-connector'); ?></th>
+                    <th><?php esc_html_e('Zeit', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Titel', 'lexware-connector-for-woocommerce'); ?></th>
+                    <th><?php esc_html_e('Nachricht', 'lexware-connector-for-woocommerce'); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($error_logs)): ?>
-                    <tr><td colspan="3"><?php _e('Keine Fehler', 'woo-lexware-connector'); ?></td></tr>
+                    <tr><td colspan="3"><?php esc_html_e('Keine Fehler', 'lexware-connector-for-woocommerce'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach (array_slice($error_logs, 0, 20) as $error): ?>
                         <tr>

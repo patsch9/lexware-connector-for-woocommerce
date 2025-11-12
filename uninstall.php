@@ -1,145 +1,114 @@
 <?php
 /**
- * Uninstall Script
- * Wird ausgeführt wenn das Plugin über WordPress gelöscht wird
+ * Uninstall script
+ * Führt Cleanup beim Deinstallieren aus
  */
 
-// Verhindere direkten Zugriff
 if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-/**
- * Lösche Plugin-Daten
- */
-class WLC_Uninstaller {
+global $wpdb;
 
-    /**
-     * Führe Deinstallation durch
-     */
-    public static function uninstall() {
-        // Prüfe Berechtigung
-        if (!current_user_can('activate_plugins')) {
-            return;
-        }
+// Lösche alle Plugin-Optionen
+$options_to_delete = array(
+    'wlc_api_key',
+    'wlc_order_statuses',
+    'wlc_retry_attempts',
+    'wlc_invoice_title',
+    'wlc_invoice_introduction',
+    'wlc_payment_terms',
+    'wlc_payment_due_days',
+    'wlc_closing_text',
+    'wlc_finalize_immediately',
+    'wlc_auto_sync_contacts',
+    'wlc_show_in_customer_area',
+    'wlc_shipping_as_line_item',
+    'wlc_enable_logging',
+    'wlc_email_on_error',
+    'wlc_auto_send_email',
+    'wlc_error_logs'
+);
 
-        // Lösche Queue-Tabelle
-        self::drop_database_tables();
+foreach ($options_to_delete as $option) {
+    delete_option($option);
+}
 
-        // Lösche Plugin-Optionen
-        self::delete_options();
-
-        // Lösche PDF-Verzeichnis
-        self::delete_upload_directory();
-
-        // Lösche Transients
-        self::delete_transients();
-
-        // Lösche Cron-Jobs
-        self::clear_scheduled_events();
-    }
-
-    /**
-     * Lösche Datenbank-Tabellen
-     */
-    private static function drop_database_tables() {
-        global $wpdb;
-
-        $table_name = $wpdb->prefix . 'wlc_queue';
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
-    }
-
-    /**
-     * Lösche alle Plugin-Optionen
-     */
-    private static function delete_options() {
-        $options = array(
-            'wlc_api_key',
-            'wlc_order_statuses',
-            'wlc_invoice_title',
-            'wlc_invoice_introduction',
-            'wlc_payment_terms',
-            'wlc_payment_due_days',
-            'wlc_closing_text',
-            'wlc_finalize_immediately',
-            'wlc_auto_sync_contacts',
-            'wlc_show_in_customer_area',
-            'wlc_enable_logging',
-            'wlc_email_on_error',
-            'wlc_retry_attempts',
-            'wlc_shipping_as_line_item',
-            'wlc_api_logs',
-            'wlc_error_logs'
-        );
-
-        foreach ($options as $option) {
-            delete_option($option);
-        }
-    }
-
-    /**
-     * Lösche Upload-Verzeichnis mit PDFs
-     */
-    private static function delete_upload_directory() {
-        $upload_dir = wp_upload_dir();
-        $pdf_dir = $upload_dir['basedir'] . '/lexware-invoices';
-
-        if (file_exists($pdf_dir)) {
-            // Lösche alle Dateien im Verzeichnis
-            $files = glob($pdf_dir . '/*');
-            foreach ($files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-
-            // Lösche Verzeichnis
-            rmdir($pdf_dir);
-        }
-    }
-
-    /**
-     * Lösche alle Transients
-     */
-    private static function delete_transients() {
-        global $wpdb;
-
-        $wpdb->query(
-            "DELETE FROM {$wpdb->options} 
-             WHERE option_name LIKE '_transient_wlc_%' 
-             OR option_name LIKE '_transient_timeout_wlc_%'"
-        );
-    }
-
-    /**
-     * Lösche geplante Cron-Jobs
-     */
-    private static function clear_scheduled_events() {
-        wp_clear_scheduled_hook('wlc_process_queue');
-    }
-
-    /**
-     * Lösche Order-Meta-Daten (optional)
-     * Auskommentiert, da Händler möglicherweise Lexware-IDs behalten möchten
-     */
-    private static function delete_order_meta() {
-        global $wpdb;
-
-        // Auskommentiert - nur aktivieren wenn gewünscht
-        /*
-        $wpdb->query(
-            "DELETE FROM {$wpdb->postmeta} 
-             WHERE meta_key IN (
-                '_wlc_lexware_invoice_id',
-                '_wlc_lexware_invoice_number',
-                '_wlc_lexware_contact_id',
-                '_wlc_lexware_credit_note_id',
-                '_wlc_lexware_invoice_voided'
-             )"
-        );
-        */
+if (function_exists('WC')) {
+    $payment_gateways = WC()->payment_gateways->payment_gateways();
+    foreach ($payment_gateways as $gateway) {
+        delete_option('wlc_payment_terms_' . $gateway->id);
+        delete_option('wlc_payment_due_days_' . $gateway->id);
     }
 }
 
-// Führe Deinstallation aus
-WLC_Uninstaller::uninstall();
+// DROP TABLE mit esc_sql() für WP < 6.2 Kompatibilität (DirectDB ok für uninstall.php)
+$table = esc_sql($wpdb->prefix . 'wlc_queue');
+$wpdb->query("DROP TABLE IF EXISTS $table"); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+$orders = get_posts(array(
+    'post_type' => 'shop_order',
+    'posts_per_page' => -1,
+    'fields' => 'ids'
+));
+
+if (function_exists('wc_get_orders')) {
+    $hpos_orders = wc_get_orders(array(
+        'limit' => -1,
+        'return' => 'ids'
+    ));
+    $orders = array_merge($orders, $hpos_orders);
+}
+
+$meta_keys_to_delete = array(
+    '_wlc_lexware_invoice_id',
+    '_wlc_lexware_invoice_number',
+    '_wlc_lexware_credit_note_id',
+    '_wlc_lexware_invoice_voided',
+    '_wlc_lexware_contact_id'
+);
+
+foreach ($orders as $order_id) {
+    $order = wc_get_order($order_id);
+    if ($order) {
+        foreach ($meta_keys_to_delete as $meta_key) {
+            $order->delete_meta_data($meta_key);
+        }
+        $order->save();
+    }
+}
+
+$upload_dir = wp_upload_dir();
+$pdf_dir = $upload_dir['basedir'] . '/lexware-invoices';
+
+if (file_exists($pdf_dir)) {
+    // WP_Filesystem für Cleanup
+    global $wp_filesystem;
+    if (empty($wp_filesystem)) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        WP_Filesystem();
+    }
+    
+    $files = $wp_filesystem->dirlist($pdf_dir);
+    if ($files) {
+        foreach ($files as $file => $fileinfo) {
+            if ($fileinfo['type'] === 'f') {
+                $wp_filesystem->delete($pdf_dir . '/' . $file);
+            }
+        }
+    }
+    
+    $wp_filesystem->rmdir($pdf_dir);
+}
+
+delete_transient('wlc_api_test_result');
+
+// DirectDB ok für uninstall.php
+$rate_limit_transients = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+    "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '_transient_wlc_rate_limit_%'"
+);
+
+foreach ($rate_limit_transients as $transient) {
+    $key = str_replace('_transient_', '', $transient);
+    delete_transient($key);
+}

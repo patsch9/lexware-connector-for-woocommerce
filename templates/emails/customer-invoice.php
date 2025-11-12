@@ -9,11 +9,17 @@ if (!defined('ABSPATH')) {
 
 do_action('woocommerce_email_header', $email_heading, $email); ?>
 
-<p><?php printf(__('Hallo %s,', 'woo-lexware-connector'), esc_html($order->get_billing_first_name())); ?></p>
+<p><?php
+/* translators: %s: Vorname des Kunden */
+echo esc_html(sprintf(__('Hallo %s,', 'lexware-connector-for-woocommerce'), $order->get_billing_first_name()));
+?></p>
 
-<p><?php _e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'woo-lexware-connector'); ?></p>
+<p><?php esc_html_e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'lexware-connector-for-woocommerce'); ?></p>
 
-<h2><?php printf(__('Bestellung #%s', 'woo-lexware-connector'), esc_html($order->get_order_number())); ?></h2>
+<h2><?php
+/* translators: %s: Bestellnummer */
+echo esc_html(sprintf(__('Bestellung #%s', 'lexware-connector-for-woocommerce'), $order->get_order_number()));
+?></h2>
 
 <?php
 do_action('woocommerce_email_order_details', $order, $sent_to_admin, $plain_text, $email);

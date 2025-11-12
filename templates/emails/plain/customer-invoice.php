@@ -7,13 +7,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-echo "= " . $email_heading . " =\n\n";
+echo "= " . esc_html($email_heading) . " =\n\n";
 
-printf(__('Hallo %s,', 'woo-lexware-connector'), esc_html($order->get_billing_first_name()));
+/* translators: %s: Vorname des Kunden */
+echo esc_html(sprintf(__('Hallo %s,', 'lexware-connector-for-woocommerce'), $order->get_billing_first_name()));
 
 echo "\n\n";
 
-_e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'woo-lexware-connector');
+esc_html_e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'lexware-connector-for-woocommerce');
 
 echo "\n\n";
 
@@ -33,4 +34,4 @@ echo wp_kses_post(wpautop(wptexturize($additional_content)));
 
 echo "\n=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=\n";
 
-echo apply_filters('woocommerce_email_footer_text', get_option('woocommerce_email_footer_text'));
+echo esc_html(apply_filters('woocommerce_email_footer_text', get_option('woocommerce_email_footer_text')));

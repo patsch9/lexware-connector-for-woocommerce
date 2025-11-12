@@ -1,4 +1,4 @@
-=== Invoice Connector for WooCemmerce and Lexware Office ===
+=== Connector Lexware Office for WooCommerce ===
 Contributors: patsch9
 Tags: woocommerce, invoicing, lexware, billing, api
 Requires at least: 5.8
