@@ -93,7 +93,7 @@ class WooCommerce_Lexware_Connector {
         }
 
         // Lade Textdomain für Übersetzungen
-        load_plugin_textdomain('woo-lexware-connector', false, dirname(WLC_PLUGIN_BASENAME) . '/languages');
+        load_plugin_textdomain('lexware-connector-for-woocommerce', false, dirname(WLC_PLUGIN_BASENAME) . '/languages');
 
         // Lade Plugin-Klassen
         $this->load_dependencies();
@@ -156,8 +156,8 @@ public function register_invoice_email($email_classes) {
         if (!$this->check_requirements()) {
             deactivate_plugins(plugin_basename(__FILE__));
             wp_die(
-                __('WooCommerce Lexware Connector erfordert WooCommerce 6.0 oder höher und PHP 7.4 oder höher.', 'woo-lexware-connector'),
-                __('Plugin-Aktivierung fehlgeschlagen', 'woo-lexware-connector'),
+                __('WooCommerce Lexware Connector erfordert WooCommerce 6.0 oder höher und PHP 7.4 oder höher.', 'lexware-connector-for-woocommerce'),
+                __('Plugin-Aktivierung fehlgeschlagen', 'lexware-connector-for-woocommerce'),
                 array('back_link' => true)
             );
         }
@@ -321,8 +321,8 @@ public function register_invoice_email($email_classes) {
         ?>
         <div class="error">
             <p>
-                <strong><?php _e('WooCommerce Lexware Connector', 'woo-lexware-connector'); ?></strong>
-                <?php _e('benötigt WooCommerce 6.0 oder höher. Bitte installieren und aktivieren Sie WooCommerce.', 'woo-lexware-connector'); ?>
+                <strong><?php _e('WooCommerce Lexware Connector', 'lexware-connector-for-woocommerce'); ?></strong>
+                <?php _e('benötigt WooCommerce 6.0 oder höher. Bitte installieren und aktivieren Sie WooCommerce.', 'lexware-connector-for-woocommerce'); ?>
             </p>
         </div>
         <?php
