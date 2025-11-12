@@ -9,11 +9,11 @@ if (!defined('ABSPATH')) {
 
 echo "= " . $email_heading . " =\n\n";
 
-printf(__('Hallo %s,', 'woo-lexware-connector'), esc_html($order->get_billing_first_name()));
+printf(__('Hallo %s,', 'lexware-connector-for-woocommerce'), esc_html($order->get_billing_first_name()));
 
 echo "\n\n";
 
-_e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'woo-lexware-connector');
+_e('vielen Dank für Ihre Bestellung. Im Anhang finden Sie Ihre Rechnung als PDF.', 'lexware-connector-for-woocommerce');
 
 echo "\n\n";
 
