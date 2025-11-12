@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Invoice Connector for WooCommerce and Lexware Office
+ * Plugin Name: Connector Lexware Office for WooCommerce
  * Plugin URI: https://github.com/patsch9/lexware-connector-for-woocommerce
  * Description: Automatische Rechnungserstellung in Lexware Office aus WooCommerce-Bestellungen mit vollständiger Synchronisation und Kundenbereichs-Integration
  * Version: 1.0.0
