@@ -284,7 +284,11 @@ class WLC_Queue_Handler {
         $table_name = $wpdb->prefix . 'wlc_queue';
         
         return $wpdb->get_results(
-            "SELECT * FROM $table_name WHERE status IN ('pending', 'failed') ORDER BY created_at DESC LIMIT 50"
+            $wpdb->prepare(
+                "SELECT * FROM {$table_name} WHERE status IN (%s, %s) ORDER BY created_at DESC LIMIT 50",
+                'pending',
+                'failed'
+            )
         );
     }
 }
