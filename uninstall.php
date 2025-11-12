@@ -42,13 +42,9 @@ if (function_exists('WC')) {
     }
 }
 
-// DROP TABLE mit esc_sql() gesichert (DirectDB ok für uninstall.php)
-$wpdb->query(
-    $wpdb->prepare(
-        'DROP TABLE IF EXISTS %i',
-        $wpdb->prefix . 'wlc_queue'
-    )
-);
+// DROP TABLE mit esc_sql() für WP < 6.2 Kompatibilität (DirectDB ok für uninstall.php)
+$table = esc_sql($wpdb->prefix . 'wlc_queue');
+$wpdb->query("DROP TABLE IF EXISTS $table"); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
 $orders = get_posts(array(
     'post_type' => 'shop_order',
@@ -108,7 +104,7 @@ if (file_exists($pdf_dir)) {
 delete_transient('wlc_api_test_result');
 
 // DirectDB ok für uninstall.php
-$rate_limit_transients = $wpdb->get_col(
+$rate_limit_transients = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
     "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '_transient_wlc_rate_limit_%'"
 );
 

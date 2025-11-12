@@ -92,8 +92,10 @@ class WooCommerce_Lexware_Connector {
             return;
         }
 
-        // Lade Textdomain für Übersetzungen
-        load_plugin_textdomain('lexware-connector-for-woocommerce', false, dirname(WLC_PLUGIN_BASENAME) . '/languages');
+        // Hinweis: load_plugin_textdomain() ist ab WP 4.6+ nicht mehr notwendig.
+        // WordPress lädt Übersetzungen automatisch basierend auf Text Domain Header.
+        // Für manuelle .mo/.po-Dateien im /languages Ordner kann der Aufruf optional bleiben,
+        // wird aber von WordPress.org Plugin Check als discouraged markiert.
 
         // Lade Plugin-Klassen
         $this->load_dependencies();
