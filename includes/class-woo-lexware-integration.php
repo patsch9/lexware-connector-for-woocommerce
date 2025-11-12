@@ -130,12 +130,9 @@ class WLC_WooCommerce_Integration {
                 
                 <?php if ($invoice_voided !== 'yes'): ?>
                     <p><button type="button" class="button button-secondary wlc-void-invoice" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('Rechnung stornieren', 'lexware-connector-for-woocommerce'); ?></button></p>
-                    
-                    <!-- E-Mail-Button -->
                     <p><button type="button" class="button button-secondary wlc-send-invoice-email" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('📧 Rechnung per E-Mail senden', 'lexware-connector-for-woocommerce'); ?></button></p>
                 <?php endif; ?>
                 
-                <!-- Verknüpfung löschen Button -->
                 <p><button type="button" class="button button-secondary wlc-unlink-invoice" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('🔗 Verknüpfung löschen', 'lexware-connector-for-woocommerce'); ?></button></p>
                 <p style="font-size: 11px; color: #666;">
                     <?php esc_html_e('Löscht nur die Verknüpfung zur Rechnung, nicht die Rechnung selbst in Lexware.', 'lexware-connector-for-woocommerce'); ?>
@@ -498,17 +495,36 @@ function wlc_ajax_download_invoice_pdf() {
         }
         $pdf_path = $safe_path;
     }
+    
+    global $wp_filesystem;
+    if (empty($wp_filesystem)) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        WP_Filesystem();
+    }
+    
+    if (!$wp_filesystem->exists($pdf_path)) {
+        wp_die(esc_html__('PDF-Datei nicht gefunden', 'lexware-connector-for-woocommerce'));
+    }
+    
+    $pdf_content = $wp_filesystem->get_contents($pdf_path);
+    
+    if ($pdf_content === false) {
+        wp_die(esc_html__('PDF konnte nicht gelesen werden', 'lexware-connector-for-woocommerce'));
+    }
+    
     header('Content-Type: application/pdf');
     header('Content-Disposition: inline; filename="rechnung_' . esc_attr($order->get_order_number()) . '.pdf"');
-    header('Content-Length: ' . filesize($pdf_path));
-    readfile($pdf_path);
+    header('Content-Length: ' . strlen($pdf_content));
+    echo $pdf_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- PDF binary data
     exit;
 }
 
 add_action('admin_notices', 'wlc_bulk_action_admin_notice');
 function wlc_bulk_action_admin_notice() {
-    if (!empty($_REQUEST['wlc_invoices_created'])) {
-        $count = intval($_REQUEST['wlc_invoices_created']);
+    // Nonce-Prüfung ist hier nicht nötig, da nur GET-Parameter gelesen werden
+    // und diese vom WordPress Core nach erfolgreicher Bulk-Action gesetzt werden
+    if (!empty($_REQUEST['wlc_invoices_created'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $count = intval($_REQUEST['wlc_invoices_created']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         printf(
             '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
             esc_html(sprintf(

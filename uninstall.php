@@ -42,8 +42,13 @@ if (function_exists('WC')) {
     }
 }
 
-$table_name = $wpdb->prefix . 'wlc_queue';
-$wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %s", $wpdb->prefix . 'wlc_queue'));
+// DROP TABLE mit esc_sql() gesichert (DirectDB ok für uninstall.php)
+$wpdb->query(
+    $wpdb->prepare(
+        'DROP TABLE IF EXISTS %i',
+        $wpdb->prefix . 'wlc_queue'
+    )
+);
 
 $orders = get_posts(array(
     'post_type' => 'shop_order',
@@ -81,21 +86,30 @@ $upload_dir = wp_upload_dir();
 $pdf_dir = $upload_dir['basedir'] . '/lexware-invoices';
 
 if (file_exists($pdf_dir)) {
-    $files = glob($pdf_dir . '/*');
-    foreach ($files as $file) {
-        if (is_file($file)) {
-            wp_delete_file($file);
+    // WP_Filesystem für Cleanup
+    global $wp_filesystem;
+    if (empty($wp_filesystem)) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        WP_Filesystem();
+    }
+    
+    $files = $wp_filesystem->dirlist($pdf_dir);
+    if ($files) {
+        foreach ($files as $file => $fileinfo) {
+            if ($fileinfo['type'] === 'f') {
+                $wp_filesystem->delete($pdf_dir . '/' . $file);
+            }
         }
     }
-    if (is_dir($pdf_dir)) {
-        @rmdir($pdf_dir);
-    }
+    
+    $wp_filesystem->rmdir($pdf_dir);
 }
 
 delete_transient('wlc_api_test_result');
 
+// DirectDB ok für uninstall.php
 $rate_limit_transients = $wpdb->get_col(
-    "SELECT option_name FROM $wpdb->options WHERE option_name LIKE '_transient_wlc_rate_limit_%'"
+    "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE '_transient_wlc_rate_limit_%'"
 );
 
 foreach ($rate_limit_transients as $transient) {

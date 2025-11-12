@@ -395,7 +395,8 @@ woocommerce_lexware_connector();
 
 // Security Headers für Admin-Seiten
 add_action('admin_init', function() {
-    if (isset($_GET['page']) && sanitize_text_field(wp_unslash($_GET['page'])) === 'wlc-settings') {
+    // Nonce-Prüfung nicht nötig für Admin-Page-Parameter (nur Lesezugriff)
+    if (isset($_GET['page']) && sanitize_text_field(wp_unslash($_GET['page'])) === 'wlc-settings') { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         header('X-Content-Type-Options: nosniff');
         header('X-Frame-Options: SAMEORIGIN');
         header('X-XSS-Protection: 1; mode=block');
