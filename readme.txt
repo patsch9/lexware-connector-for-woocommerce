@@ -60,6 +60,7 @@ Kunden- und Rechnungsdaten werden an die Lexware-API übermittelt.
 * Fehlerbehebung, deaktivierung von Automatisches aktualisierungen bei Änderungen in der Bestellung. Die Führte zu einem Automatischem Storno
 * Hinzufügen eine "Rechnung aktualisieren" Buttons
 * Möglichkeit des manuellen hinterlegens von Rechnungsdaten
+* Queue leeren löscht jetzt alle Items, auch im Status pending
 
 == Upgrade Notice ==
 Erstes Release. Änderungen siehe Changelog.
