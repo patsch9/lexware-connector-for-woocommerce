@@ -132,9 +132,9 @@ class WLC_WooCommerce_Integration {
             $order->update_meta_data('_wlc_manual_invoice_entry', 'yes');
             $order->save();
             
-            /* translators: 1: Lexware invoice ID, 2: Invoice number */
             $order->add_order_note(
                 sprintf(
+                    /* translators: 1: Lexware invoice ID, 2: Invoice number */
                     esc_html__('Rechnungsdaten manuell hinterlegt: ID %1$s, Nummer %2$s', 'lexware-connector-for-woocommerce'),
                     $manual_invoice_id,
                     $manual_invoice_number
@@ -673,10 +673,10 @@ function wlc_bulk_action_admin_notice() {
     // und diese vom WordPress Core nach erfolgreicher Bulk-Action gesetzt werden
     if (!empty($_REQUEST['wlc_invoices_created'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
         $count = intval($_REQUEST['wlc_invoices_created']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        /* translators: %d: Number of invoices */
         printf(
             '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
             esc_html(sprintf(
+            /* translators: %d: Number of invoices added to queue */
                 _n(
                     '%d Rechnung zur Queue hinzugefügt.',
                     '%d Rechnungen zur Queue hinzugefügt.',
