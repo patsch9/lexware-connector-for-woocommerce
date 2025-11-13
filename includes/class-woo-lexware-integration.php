@@ -33,7 +33,8 @@ class WLC_WooCommerce_Integration {
         }
         add_action('woocommerce_order_status_cancelled', array($this, 'handle_order_cancelled'), 10, 2);
         add_action('woocommerce_order_status_refunded', array($this, 'handle_order_refunded'), 10, 2);
-        add_action('woocommerce_saved_order_items', array($this, 'handle_order_items_changed'), 10, 2);
+        // ACHTUNG: Automatisches Update deaktiviert
+        // add_action('woocommerce_saved_order_items', array($this, 'handle_order_items_changed'), 10, 2);
     }
     
     private function register_admin_hooks() {
@@ -70,14 +71,8 @@ class WLC_WooCommerce_Integration {
         $this->handle_order_cancelled($order_id, $order);
     }
     
-    public function handle_order_items_changed($order_id, $items) {
-        $order = wc_get_order($order_id);
-        if (!$order) { return; }
-        $lexware_invoice_id = $order->get_meta('_wlc_lexware_invoice_id');
-        $already_voided = $order->get_meta('_wlc_lexware_invoice_voided');
-        if (!$lexware_invoice_id || $already_voided === 'yes') { return; }
-        WLC_Queue_Handler::add_to_queue($order_id, 'update_invoice');
-    }
+    // keine automatische Aktualisierung mehr
+    // public function handle_order_items_changed($order_id, $items) {...}
     
     public function add_order_metabox() {
         add_meta_box(
@@ -188,6 +183,7 @@ class WLC_WooCommerce_Integration {
                 <?php if ($invoice_voided !== 'yes'): ?>
                     <p><button type="button" class="button button-secondary wlc-void-invoice" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('Rechnung stornieren', 'lexware-connector-for-woocommerce'); ?></button></p>
                     <p><button type="button" class="button button-secondary wlc-send-invoice-email" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('📧 Rechnung per E-Mail senden', 'lexware-connector-for-woocommerce'); ?></button></p>
+                    <p><button type="button" class="button button-secondary wlc-update-invoice" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('🔄 Rechnung aktualisieren', 'lexware-connector-for-woocommerce'); ?></button></p>
                 <?php endif; ?>
                 
                 <p><button type="button" class="button button-secondary wlc-unlink-invoice" data-order-id="<?php echo esc_attr($order_id); ?>"><?php esc_html_e('🔗 Verknüpfung löschen', 'lexware-connector-for-woocommerce'); ?></button></p>
@@ -343,6 +339,37 @@ class WLC_WooCommerce_Integration {
                 });
             });
             
+            $('.wlc-update-invoice').on('click', function() {
+                var orderId = $(this).data('order-id');
+                var button = $(this);
+                if (!confirm('<?php esc_attr_e('Rechnung aktualisieren? Das ist nur möglich, solange die Rechnung noch nicht in Lexware finalisiert ist.', 'lexware-connector-for-woocommerce'); ?>')) {
+                    return;
+                }
+                if (!rateLimited('update_invoice')) { return; }
+                button.prop('disabled', true).text('<?php esc_attr_e('Wird aktualisiert...', 'lexware-connector-for-woocommerce'); ?>');
+                $.ajax({
+                    url: ajaxurl,
+                    method: 'POST',
+                    data: {
+                        action: 'wlc_manual_update_invoice',
+                        order_id: orderId,
+                        nonce: '<?php echo esc_js(wp_create_nonce('wlc_manual_action')); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            location.reload();
+                        } else {
+                            alert(response.data.message || '<?php esc_attr_e('Fehler beim Aktualisieren der Rechnung', 'lexware-connector-for-woocommerce'); ?>');
+                            button.prop('disabled', false).text('<?php esc_attr_e('🔄 Rechnung aktualisieren', 'lexware-connector-for-woocommerce'); ?>');
+                        }
+                    },
+                    error: function() {
+                        alert('<?php esc_attr_e('Fehler beim Aktualisieren der Rechnung', 'lexware-connector-for-woocommerce'); ?>');
+                        button.prop('disabled', false).text('<?php esc_attr_e('🔄 Rechnung aktualisieren', 'lexware-connector-for-woocommerce'); ?>');
+                    }
+                });
+            });
+
             $('.wlc-unlink-invoice').on('click', function() {
                 var orderId = $(this).data('order-id');
                 var button = $(this);
@@ -522,6 +549,33 @@ function wlc_ajax_send_invoice_email() {
     }
 }
 
+add_action('wp_ajax_wlc_manual_update_invoice', 'wlc_ajax_manual_update_invoice');
+function wlc_ajax_manual_update_invoice() {
+    check_ajax_referer('wlc_manual_action', 'nonce');
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => esc_html__('Keine Berechtigung', 'lexware-connector-for-woocommerce')));
+    }
+    if (class_exists('WLC_Security') && !WLC_Security::check_rate_limit('manual_update_invoice', get_current_user_id(), 5, 60)) {
+        wp_send_json_error(array('message' => esc_html__('Zu viele Anfragen. Bitte warten.', 'lexware-connector-for-woocommerce')));
+    }
+    $order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        wp_send_json_error(array('message' => esc_html__('Bestellung nicht gefunden', 'lexware-connector-for-woocommerce')));
+    }
+    $lexware_invoice_id = $order->get_meta('_wlc_lexware_invoice_id');
+    $already_voided = $order->get_meta('_wlc_lexware_invoice_voided');
+    if (!$lexware_invoice_id || $already_voided === 'yes') {
+        wp_send_json_error(array('message' => esc_html__('Keine gültige Rechnung vorhanden', 'lexware-connector-for-woocommerce')));
+    }
+    WLC_Queue_Handler::add_to_queue($order_id, 'update_invoice');
+    $result = WLC_Queue_Handler::process_next_item();
+    if (is_wp_error($result)) {
+        wp_send_json_error(array('message' => $result->get_error_message()));
+    }
+    wp_send_json_success(array('message' => esc_html__('Rechnung wurde aktualisiert', 'lexware-connector-for-woocommerce')));
+}
+
 add_action('wp_ajax_wlc_unlink_invoice', 'wlc_ajax_unlink_invoice');
 function wlc_ajax_unlink_invoice() {
     check_ajax_referer('wlc_manual_action', 'nonce');
@@ -614,14 +668,11 @@ function wlc_ajax_download_invoice_pdf() {
 
 add_action('admin_notices', 'wlc_bulk_action_admin_notice');
 function wlc_bulk_action_admin_notice() {
-    // Nonce-Prüfung ist hier nicht nötig, da nur GET-Parameter gelesen werden
-    // und diese vom WordPress Core nach erfolgreicher Bulk-Action gesetzt werden
-    if (!empty($_REQUEST['wlc_invoices_created'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-        $count = intval($_REQUEST['wlc_invoices_created']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (!empty($_REQUEST['wlc_invoices_created'])) {
+        $count = intval($_REQUEST['wlc_invoices_created']);
         printf(
             '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
             esc_html(sprintf(
-                /* translators: %d: Anzahl der Rechnungen */
                 _n(
                     '%d Rechnung zur Queue hinzugefügt.',
                     '%d Rechnungen zur Queue hinzugefügt.',
