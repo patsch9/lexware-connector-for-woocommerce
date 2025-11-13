@@ -543,7 +543,8 @@ class WLC_Admin_Settings {
             $table_name = $wpdb->prefix . 'wlc_queue';
             // Lösche sowohl pending als auch failed Items
             $deleted = $wpdb->query($wpdb->prepare("DELETE FROM " . esc_sql($table_name) . " WHERE status IN (%s, %s)", 'pending', 'failed')); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-            echo '<div class="notice notice-success"><p>' . sprintf(esc_html__('%d Queue-Items gelöscht!', 'lexware-connector-for-woocommerce'), $deleted) . '</p></div>';
+            /* translators: %d: Number of deleted queue items */
+            echo '<div class="notice notice-success"><p>' . esc_html( sprintf( __('%d Queue-Items gelöscht!', 'lexware-connector-for-woocommerce'), absint($deleted) ) ) . '</p></div>';
         }
         ?>
         <table class="wp-list-table widefat fixed striped">
