@@ -3,7 +3,7 @@
  * Plugin Name: Connector Lexware Office for WooCommerce
  * Plugin URI: https://github.com/patsch9/lexware-connector-for-woocommerce
  * Description: Automatische Rechnungserstellung in Lexware Office aus WooCommerce-Bestellungen mit vollständiger Synchronisation und Kundenbereichs-Integration
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Patrick Schmidt
  * Author URI: https://github.com/patsch9
  * License: GPLv2 or later
@@ -302,19 +302,19 @@ public function register_invoice_email($email_classes) {
         }
     }
 
-    /**
-     * Plugin-Deaktivierung
-     */
-    public function deactivate() {
-        // Lösche Cron-Jobs
-        wp_clear_scheduled_hook('wlc_process_queue');
-
-        // Flush Rewrite Rules
-        flush_rewrite_rules();
-
-        // Hinweis: Daten werden NICHT gelöscht bei Deaktivierung
-        // Nur bei Deinstallation (siehe uninstall.php)
-    }
+	/**
+	* Plugin-Deaktivierung
+	*/
+	public function deactivate() {
+		// Cleanup Action Scheduler / WP Cron
+		do_action('wlc_cleanup_scheduler');
+		
+		// Flush Rewrite Rules
+		flush_rewrite_rules();
+		
+		// Hinweis: Daten werden NICHT gelöscht bei Deaktivierung
+		// Nur bei Deinstallation (siehe uninstall.php)
+	}
 
     /**
      * WooCommerce-Fehler-Hinweis
