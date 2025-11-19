@@ -4,7 +4,7 @@ Tags: woocommerce, invoicing, lexware, billing, api
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -61,6 +61,8 @@ Kunden- und Rechnungsdaten werden an die Lexware-API übermittelt.
 * Hinzufügen eine "Rechnung aktualisieren" Buttons
 * Möglichkeit des manuellen hinterlegens von Rechnungsdaten
 * Queue leeren löscht jetzt alle Items, auch im Status pending
+== 1.0.2 ==
+* Nutzung des WC Action Scheduler mit Fallback auf WP Cron um die Verarbeitung der Warteschlange zu optimierten.
 
 == Upgrade Notice ==
 Erstes Release. Änderungen siehe Changelog.
