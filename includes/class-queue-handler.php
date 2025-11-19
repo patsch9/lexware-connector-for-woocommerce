@@ -23,8 +23,9 @@ class WLC_Queue_Handler {
         // Action Hook für Queue-Verarbeitung registrieren
         add_action('wlc_process_queue', array($this, 'process_queue'));
         
-        // Setup Scheduler nach WooCommerce Init
-        add_action('woocommerce_init', array($this, 'setup_scheduler'));
+        // WICHTIG: Setup Scheduler NACH Action Scheduler Init
+        // action_scheduler_init ist der richtige Hook (Priority 20 um sicher zu sein)
+        add_action('action_scheduler_init', array($this, 'setup_scheduler'), 20);
         
         // Cleanup bei Plugin-Deaktivierung
         add_action('wlc_cleanup_scheduler', array($this, 'cleanup_scheduler'));
@@ -32,7 +33,7 @@ class WLC_Queue_Handler {
     
     /**
      * Setup Action Scheduler für Queue-Verarbeitung
-     * Action Scheduler ist zuverlässiger als WP Cron und kommt mit WooCommerce
+     * Wird aufgerufen NACHDEM Action Scheduler vollständig initialisiert ist
      */
     public function setup_scheduler() {
         // Prüfe ob Action Scheduler verfügbar ist
