@@ -447,31 +447,46 @@ public function sync_contact($order) {
                                 $discount_tax_rate = 0; // KEINE Steuer für Wertgutscheine!
                                 $discount_gross = round($coupon_discount, 2);
                                 $discount_net = $discount_gross; // Bei 0% Steuer: netto = brutto
+                                
+                                // Für Wertgutscheine: Menge ist IMMER 1, Betrag wird negativ
+                                $line_items[] = array(
+                                    'type' => 'custom',
+                                    'name' => sprintf(
+                                        __('Wertgutschein: %s', 'lexware-connector-for-woocommerce'),
+                                        $coupon_code
+                                    ),
+                                    'quantity' => 1 * $multiplier,  // Immer 1 (nicht -1)
+                                    'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
+                                    'unitPrice' => array(
+                                        'currency' => $order->get_currency(),
+                                        'netAmount' => $discount_net * -1 * $multiplier,    // Negativ für Rabatt
+                                        'grossAmount' => $discount_gross * -1 * $multiplier, // Negativ für Rabatt
+                                        'taxRatePercentage' => $discount_tax_rate
+                                    )
+                                );
                             } else {
                                 // Normale Rabatte: Mit Steuer der Artikel
                                 $discount_tax_rate = $average_tax_rate;
                                 $discount_gross = round($coupon_discount, 2);
                                 $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
+                                
+                                // Für normale Rabatte: quantity -1, Betrag positiv
+                                $line_items[] = array(
+                                    'type' => 'custom',
+                                    'name' => sprintf(
+                                        __('Rabatt: %s', 'lexware-connector-for-woocommerce'),
+                                        $coupon_code
+                                    ),
+                                    'quantity' => -1 * $multiplier,
+                                    'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
+                                    'unitPrice' => array(
+                                        'currency' => $order->get_currency(),
+                                        'netAmount' => $discount_net * $multiplier,
+                                        'grossAmount' => $discount_gross * $multiplier,
+                                        'taxRatePercentage' => $discount_tax_rate
+                                    )
+                                );
                             }
-                            
-                            // Für negative Items (Rabatte) multiplizieren wir mit -1
-                            $line_items[] = array(
-                                'type' => 'custom',
-                                'name' => sprintf(
-                                    $is_value_voucher 
-                                        ? __('Wertgutschein: %s', 'lexware-connector-for-woocommerce')
-                                        : __('Rabatt: %s', 'lexware-connector-for-woocommerce'),
-                                    $coupon_code
-                                ),
-                                'quantity' => -1 * $multiplier,
-                                'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
-                                'unitPrice' => array(
-                                    'currency' => $order->get_currency(),
-                                    'netAmount' => $discount_net * $multiplier,
-                                    'grossAmount' => $discount_gross * $multiplier,
-                                    'taxRatePercentage' => $discount_tax_rate
-                                )
-                            );
                             break;
                         }
                     }
