@@ -58,6 +58,32 @@ class WLC_Lexware_API_Client {
         $this->request_times[] = microtime(true);
     }
 
+    /**
+     * Prüft, ob ein Coupon ein Wertgutschein ist
+     * Ein Wertgutschein wird in WooCommerce mit einem separaten Flag gespeichert
+     */
+    private function is_value_voucher($coupon_code) {
+        $coupon = new WC_Coupon($coupon_code);
+        if (!$coupon || !$coupon->get_id()) {
+            return false;
+        }
+        
+        // Prüfe verschiedene Möglichkeiten, wie WooCommerce Wertgutscheine kennzeichnet
+        // 1. Coupon-Meta (falls vom Plugin gespeichert)
+        $is_value_voucher = get_post_meta($coupon->get_id(), '_is_value_voucher', true);
+        if ($is_value_voucher === 'yes') {
+            return true;
+        }
+        
+        // 2. Prüfe WooCommerce-Coupon Meta direkt
+        $coupon_data = get_post_meta($coupon->get_id());
+        if (isset($coupon_data['_is_value_voucher']) && $coupon_data['_is_value_voucher'][0] === 'yes') {
+            return true;
+        }
+        
+        return false;
+    }
+
 public function sync_contact($order) {
     $existing_contact_id = $order->get_meta('_wlc_lexware_contact_id');
     
@@ -413,18 +439,31 @@ public function sync_contact($order) {
                             // Hole Discount von diesem Item (Bruttobetrag aus WooCommerce)
                             $coupon_discount = abs($coupon_item->get_discount());
                             
-                            // Nutze den durchschnittlichen Steuersatz der Artikel
-                            $discount_tax_rate = $average_tax_rate;
+                            // WICHTIG: Prüfe, ob es ein Wertgutschein ist
+                            $is_value_voucher = $this->is_value_voucher($coupon_code);
                             
-                            // Berechne Netto- und Bruttobetrag des Rabatts
-                            // Der Rabatt ist in WooCommerce bereits ein Bruttobetrag
-                            $discount_gross = round($coupon_discount, 2);
-                            $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
+                            if ($is_value_voucher) {
+                                // Wertgutscheine: OHNE Steuer (0%)
+                                // Sie werden bei Einlösung besteuert, nicht bei Verkauf
+                                $discount_tax_rate = 0; // KEINE Steuer für Wertgutscheine!
+                                $discount_gross = round($coupon_discount, 2);
+                                $discount_net = $discount_gross; // Bei 0% Steuer: netto = brutto
+                            } else {
+                                // Normale Rabatte: Mit Steuer der Artikel
+                                $discount_tax_rate = $average_tax_rate;
+                                $discount_gross = round($coupon_discount, 2);
+                                $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
+                            }
                             
                             // Für negative Items (Rabatte) multiplizieren wir mit -1
                             $line_items[] = array(
                                 'type' => 'custom',
-                                'name' => sprintf(__('Rabatt: %s', 'lexware-connector-for-woocommerce'), $coupon_code),
+                                'name' => sprintf(
+                                    $is_value_voucher 
+                                        ? __('Wertgutschein: %s', 'lexware-connector-for-woocommerce')
+                                        : __('Rabatt: %s', 'lexware-connector-for-woocommerce'),
+                                    $coupon_code
+                                ),
                                 'quantity' => -1 * $multiplier,
                                 'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
                                 'unitPrice' => array(
