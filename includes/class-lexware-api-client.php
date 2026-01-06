@@ -11,7 +11,13 @@ if (!defined('ABSPATH')) {
 class WLC_Lexware_API_Client {
 
     const API_BASE_URL = 'https://api.lexoffice.io/v1/';
+    const RATE_LIMIT_REQUESTS = 2; // 2 requests pro Sekunde
+    const RATE_LIMIT_WINDOW = 1; // 1 Sekunde
+    const MAX_RETRIES = 3; // Exponential Backoff: max 3 Retries
+    
     private $api_key;
+    private $last_request_time = 0;
+    private $request_times = array(); // Für Tracking der Requests im Zeitfenster
 
     public function __construct() {
         $this->api_key = get_option('wlc_api_key', '');
@@ -23,6 +29,33 @@ class WLC_Lexware_API_Client {
         $date->setTimezone(new DateTimeZone('Europe/Berlin'));
         $date->setTime(0, 0, 0);
         return $date->format('Y-m-d\TH:i:s.000P');
+    }
+
+    /**
+     * Respektiert Rate Limits und wartet bei Bedarf
+     */
+    private function enforce_rate_limit() {
+        $now = microtime(true);
+        
+        // Entferne alte Einträge außerhalb des Zeitfensters
+        $this->request_times = array_filter($this->request_times, function($time) use ($now) {
+            return ($now - $time) < self::RATE_LIMIT_WINDOW;
+        });
+        
+        // Wenn wir das Limit erreicht haben, warte
+        if (count($this->request_times) >= self::RATE_LIMIT_REQUESTS) {
+            // Warte auf den ältesten Request
+            $oldest = min($this->request_times);
+            $wait_time = self::RATE_LIMIT_WINDOW - ($now - $oldest) + 0.01; // 10ms Puffer
+            
+            if ($wait_time > 0) {
+                usleep($wait_time * 1000000); // Convert to microseconds
+                $this->request_times = array(); // Reset nach Warten
+            }
+        }
+        
+        // Tracke diesen Request
+        $this->request_times[] = microtime(true);
     }
 
 public function sync_contact($order) {
@@ -497,6 +530,10 @@ public function sync_contact($order) {
         if (empty($this->api_key)) {
             return new WP_Error('no_api_key', __('Kein API-Key konfiguriert', 'lexware-connector-for-woocommerce'));
         }
+        
+        // Enforce rate limiting
+        $this->enforce_rate_limit();
+        
         $url = self::API_BASE_URL . $endpoint;
         $args = array(
             'method' => $method,
@@ -510,16 +547,47 @@ public function sync_contact($order) {
         if ($data !== null && in_array($method, array('POST', 'PUT'))) {
             $args['body'] = json_encode($data);
         }
-        $response = wp_remote_request($url, $args);
-        if (is_wp_error($response)) {
-            $this->log_error('API Request Failed', $response->get_error_message());
-            return $response;
+        
+        // Exponential Backoff bei 429 Responses
+        $retry_count = 0;
+        $response = null;
+        
+        while ($retry_count <= self::MAX_RETRIES) {
+            $response = wp_remote_request($url, $args);
+            
+            if (is_wp_error($response)) {
+                $this->log_error('API Request Failed', $response->get_error_message());
+                return $response;
+            }
+            
+            $status_code = wp_remote_retrieve_response_code($response);
+            
+            // Bei Rate Limit: exponential backoff
+            if ($status_code == 429) {
+                if ($retry_count < self::MAX_RETRIES) {
+                    $wait_time = pow(2, $retry_count); // 1s, 2s, 4s
+                    $this->log_error('Rate Limited', 'HTTP 429, waiting ' . $wait_time . 's before retry');
+                    sleep($wait_time);
+                    $retry_count++;
+                    continue;
+                } else {
+                    $body = wp_remote_retrieve_body($response);
+                    $this->log_error('Rate Limit Exceeded', 'Max retries reached for Rate Limiting');
+                    return new WP_Error('rate_limit', __('Lexware API Rate Limit überschritten - bitte später erneut versuchen', 'lexware-connector-for-woocommerce'));
+                }
+            }
+            
+            // Success or other error
+            break;
         }
+        
         $status_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
+        
         if (get_option('wlc_enable_logging', 'yes') === 'yes') {
             $this->log_request($method, $endpoint, $data, $status_code, $body);
         }
+        
         if ($status_code < 200 || $status_code >= 300) {
             $error_data = json_decode($body, true);
             $error_message = $error_data['message'] ?? $body;
@@ -530,6 +598,7 @@ public function sync_contact($order) {
             ));
             return new WP_Error('api_error', $error_message, array('status' => $status_code));
         }
+        
         if ($raw_response) {
             return $body;
         }
