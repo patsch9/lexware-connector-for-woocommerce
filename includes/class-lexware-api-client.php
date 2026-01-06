@@ -59,8 +59,13 @@ class WLC_Lexware_API_Client {
     }
 
     /**
-     * Prüft, ob ein Coupon ein Wertgutschein ist
-     * Ein Wertgutschein wird in WooCommerce mit einem separaten Flag gespeichert
+     * Prüft, ob ein Coupon ein Wertgutschein ist (Germanized Plugin)
+     * 
+     * Germanized speichert das Flag als Meta-Feld 'is_voucher' mit Wert 'yes'.
+     * Wertgutscheine wurden ohne MwSt. verkauft und werden erst bei der Einlösung besteuert.
+     * 
+     * @param string $coupon_code Der Coupon-Code
+     * @return bool True wenn Wertgutschein, false sonst
      */
     private function is_value_voucher($coupon_code) {
         $coupon = new WC_Coupon($coupon_code);
@@ -68,16 +73,10 @@ class WLC_Lexware_API_Client {
             return false;
         }
         
-        // Prüfe verschiedene Möglichkeiten, wie WooCommerce Wertgutscheine kennzeichnet
-        // 1. Coupon-Meta (falls vom Plugin gespeichert)
-        $is_value_voucher = get_post_meta($coupon->get_id(), '_is_value_voucher', true);
-        if ($is_value_voucher === 'yes') {
-            return true;
-        }
-        
-        // 2. Prüfe WooCommerce-Coupon Meta direkt
-        $coupon_data = get_post_meta($coupon->get_id());
-        if (isset($coupon_data['_is_value_voucher']) && $coupon_data['_is_value_voucher'][0] === 'yes') {
+        // Germanized nutzt 'is_voucher' Meta-Feld
+        // Siehe: woocommerce-germanized/includes/class-wc-gzd-coupon-helper.php
+        $is_voucher = $coupon->get_meta('is_voucher', true);
+        if ($is_voucher === 'yes') {
             return true;
         }
         
@@ -439,12 +438,12 @@ public function sync_contact($order) {
                             // Hole Discount von diesem Item (Bruttobetrag aus WooCommerce)
                             $coupon_discount = abs($coupon_item->get_discount());
                             
-                            // WICHTIG: Prüfe, ob es ein Wertgutschein ist
+                            // WICHTIG: Prüfe, ob es ein Wertgutschein ist (Germanized Plugin)
                             $is_value_voucher = $this->is_value_voucher($coupon_code);
                             
                             if ($is_value_voucher) {
                                 // Wertgutscheine: OHNE Steuer (0%)
-                                // Sie werden bei Einlösung besteuert, nicht bei Verkauf
+                                // Sie wurden ohne MwSt. verkauft und werden erst bei Einlösung besteuert
                                 $discount_tax_rate = 0; // KEINE Steuer für Wertgutscheine!
                                 $discount_gross = round($coupon_discount, 2);
                                 $discount_net = $discount_gross; // Bei 0% Steuer: netto = brutto
