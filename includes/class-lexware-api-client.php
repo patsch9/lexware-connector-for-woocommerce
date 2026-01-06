@@ -343,6 +343,7 @@ public function sync_contact($order) {
             );
         }
         
+        // Versandkosten als Line Item (falls aktiviert)
         if (get_option('wlc_shipping_as_line_item', 'yes') === 'yes' && $order->get_shipping_total() > 0) {
             $shipping_tax_rate = $this->calculate_shipping_tax_rate($order);
             $shipping_net = round($order->get_shipping_total(), 2) * $multiplier;
@@ -360,6 +361,60 @@ public function sync_contact($order) {
                     'taxRatePercentage' => $shipping_tax_rate
                 )
             );
+        }
+        
+        // Gutscheine / Coupons als Rabatte (negative Line Items)
+        $coupon_items = $order->get_coupon_codes();
+        if (!empty($coupon_items)) {
+            foreach ($coupon_items as $coupon_code) {
+                // Hole den Coupon und seinen Rabatt
+                $coupon = new WC_Coupon($coupon_code);
+                
+                if ($coupon && $coupon->get_id()) {
+                    // Berechne den Rabatt für diesen Coupon
+                    // Iteriere durch Coupons und sammle ihre Rabatte
+                    $coupon_discount = 0;
+                    
+                    foreach ($order->get_items('coupon') as $coupon_item) {
+                        if ($coupon_item->get_code() === $coupon_code) {
+                            // Hole Discount von diesem Item
+                            $coupon_discount = abs($coupon_item->get_discount());
+                            
+                            // Bestimme Steuersatz für den Rabatt
+                            // Bei Rabatten nehmen wir den durchschnittlichen Steuersatz der Artikel
+                            $discount_tax_rate = 19.0; // Standard fallback
+                            
+                            if ($order->get_subtotal() > 0) {
+                                $total_tax = $order->get_total_tax();
+                                // Nur Artikel-Steuern, nicht Versand
+                                $items_subtotal = $order->get_subtotal();
+                                if ($items_subtotal > 0 && $total_tax > 0) {
+                                    $discount_tax_rate = round(($total_tax / $items_subtotal) * 100, 2);
+                                }
+                            }
+                            
+                            // Berechne Netto- und Bruttobetrag des Rabatts
+                            $discount_gross = round($coupon_discount, 2);
+                            $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
+                            
+                            // Für negative Items (Rabatte) multiplizieren wir mit -1
+                            $line_items[] = array(
+                                'type' => 'custom',
+                                'name' => sprintf(__('Rabatt: %s', 'lexware-connector-for-woocommerce'), $coupon_code),
+                                'quantity' => -1 * $multiplier,
+                                'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
+                                'unitPrice' => array(
+                                    'currency' => $order->get_currency(),
+                                    'netAmount' => $discount_net * $multiplier,
+                                    'grossAmount' => $discount_gross * $multiplier,
+                                    'taxRatePercentage' => $discount_tax_rate
+                                )
+                            );
+                            break; // Nur diesen Coupon verarbeiten
+                        }
+                    }
+                }
+            }
         }
         
         return $line_items;
