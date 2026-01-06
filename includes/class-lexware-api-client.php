@@ -364,36 +364,27 @@ public function sync_contact($order) {
         }
         
         // Gutscheine / Coupons als Rabatte (negative Line Items)
-        $coupon_items = $order->get_coupon_codes();
-        if (!empty($coupon_items)) {
-            foreach ($coupon_items as $coupon_code) {
-                // Hole den Coupon und seinen Rabatt
+        $coupon_codes = $order->get_coupon_codes();
+        if (!empty($coupon_codes)) {
+            // Berechne durchschnittlichen Steuersatz aller Artikel EINMAL
+            $average_tax_rate = $this->get_average_tax_rate_for_items($order);
+            
+            foreach ($coupon_codes as $coupon_code) {
                 $coupon = new WC_Coupon($coupon_code);
                 
                 if ($coupon && $coupon->get_id()) {
-                    // Berechne den Rabatt für diesen Coupon
-                    // Iteriere durch Coupons und sammle ihre Rabatte
                     $coupon_discount = 0;
                     
                     foreach ($order->get_items('coupon') as $coupon_item) {
                         if ($coupon_item->get_code() === $coupon_code) {
-                            // Hole Discount von diesem Item
+                            // Hole Discount von diesem Item (Bruttobetrag aus WooCommerce)
                             $coupon_discount = abs($coupon_item->get_discount());
                             
-                            // Bestimme Steuersatz für den Rabatt
-                            // Bei Rabatten nehmen wir den durchschnittlichen Steuersatz der Artikel
-                            $discount_tax_rate = 19.0; // Standard fallback
-                            
-                            if ($order->get_subtotal() > 0) {
-                                $total_tax = $order->get_total_tax();
-                                // Nur Artikel-Steuern, nicht Versand
-                                $items_subtotal = $order->get_subtotal();
-                                if ($items_subtotal > 0 && $total_tax > 0) {
-                                    $discount_tax_rate = round(($total_tax / $items_subtotal) * 100, 2);
-                                }
-                            }
+                            // Nutze den durchschnittlichen Steuersatz der Artikel
+                            $discount_tax_rate = $average_tax_rate;
                             
                             // Berechne Netto- und Bruttobetrag des Rabatts
+                            // Der Rabatt ist in WooCommerce bereits ein Bruttobetrag
                             $discount_gross = round($coupon_discount, 2);
                             $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
                             
@@ -410,7 +401,7 @@ public function sync_contact($order) {
                                     'taxRatePercentage' => $discount_tax_rate
                                 )
                             );
-                            break; // Nur diesen Coupon verarbeiten
+                            break;
                         }
                     }
                 }
@@ -443,6 +434,19 @@ public function sync_contact($order) {
             return round(($total_tax / $subtotal) * 100, 2);
         }
         return 19.0;
+    }
+
+    private function get_average_tax_rate_for_items($order) {
+        // Berechne den durchschnittlichen Steuersatz basierend auf allen Artikeln
+        if ($order->get_subtotal() > 0) {
+            $total_tax = $order->get_total_tax();
+            $items_subtotal = $order->get_subtotal();
+            if ($items_subtotal > 0 && $total_tax > 0) {
+                $rate = ($total_tax / $items_subtotal) * 100;
+                return round($rate, 2);
+            }
+        }
+        return 19.0; // Fallback auf 19%
     }
 
     private function calculate_shipping_tax_rate($order) {
