@@ -203,12 +203,21 @@ public function sync_contact($order) {
         // Zusammenfassung von Netto und Brutto (ohne Rabatte)
         $items_subtotal = $this->calculate_items_subtotal($order);
         
+        // WICHTIG: Berechne die finalen Totals NACH Rabattabzug
+        // Damit Lexware nicht nochmal abzieht
+        $final_net = round($items_subtotal['net'] - $total_discount, 2);
+        $final_gross = round($items_subtotal['gross'] - $total_discount, 2);
+        $final_tax = round($final_gross - $final_net, 2);
+        
         $invoice_data = array(
             'voucherDate' => $voucher_date,
             'address' => $this->format_address($order),
             'lineItems' => $line_items,
             'totalPrice' => array(
                 'currency' => $order->get_currency(),
+                'totalNetAmount' => $final_net > 0 ? $final_net : 0,
+                'totalGrossAmount' => $final_gross > 0 ? $final_gross : 0,
+                'totalTaxAmount' => $final_tax > 0 ? $final_tax : 0,
                 'totalDiscountAbsolute' => $total_discount > 0 ? $total_discount : null
             ),
             'taxConditions' => array('taxType' => $tax_type),
