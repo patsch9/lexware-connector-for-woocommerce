@@ -194,11 +194,23 @@ public function sync_contact($order) {
         $is_company = !empty($order->get_billing_company());
         $tax_type = $is_company ? 'net' : 'gross';
         
+        // Hole Line Items (ohne Gutscheine/Rabatte)
+        $line_items = $this->format_line_items($order);
+        
+        // Berechne Gesamtrabatt (alle Coupons/Gutscheine zusammen)
+        $total_discount = $this->get_total_discount($order);
+        
+        // Zusammenfassung von Netto und Brutto (ohne Rabatte)
+        $items_subtotal = $this->calculate_items_subtotal($order);
+        
         $invoice_data = array(
             'voucherDate' => $voucher_date,
             'address' => $this->format_address($order),
-            'lineItems' => $this->format_line_items($order),
-            'totalPrice' => array('currency' => $order->get_currency()),
+            'lineItems' => $line_items,
+            'totalPrice' => array(
+                'currency' => $order->get_currency(),
+                'totalDiscountAbsolute' => $total_discount > 0 ? $total_discount : null
+            ),
             'taxConditions' => array('taxType' => $tax_type),
             'shippingConditions' => array('shippingDate' => $voucher_date, 'shippingType' => 'delivery'),
             'title' => $this->replace_shortcodes(get_option('wlc_invoice_title', 'Rechnung'), $order),
@@ -375,6 +387,64 @@ public function sync_contact($order) {
         return $address;
     }
 
+    /**
+     * Berechnet den Gesamtrabatt (alle Gutscheine/Coupons zusammen)
+     * Wird als totalDiscountAbsolute in Lexware übernommen
+     */
+    private function get_total_discount($order) {
+        $total_discount = 0.0;
+        $coupon_codes = $order->get_coupon_codes();
+        
+        if (empty($coupon_codes)) {
+            return $total_discount;
+        }
+        
+        foreach ($coupon_codes as $coupon_code) {
+            foreach ($order->get_items('coupon') as $coupon_item) {
+                if ($coupon_item->get_code() === $coupon_code) {
+                    $total_discount += abs($coupon_item->get_discount());
+                    break;
+                }
+            }
+        }
+        
+        return round($total_discount, 2);
+    }
+
+    /**
+     * Berechnet Summen von Artikeln und Versand (ohne Rabatte)
+     */
+    private function calculate_items_subtotal($order, $negative = false) {
+        $multiplier = $negative ? -1 : 1;
+        $subtotal = array(
+            'net' => 0.0,
+            'gross' => 0.0,
+            'tax' => 0.0
+        );
+        
+        // Artikel
+        foreach ($order->get_items() as $item) {
+            $net = round($order->get_item_subtotal($item, false), 2);
+            $gross = round($order->get_item_subtotal($item, true), 2);
+            
+            $subtotal['net'] += $net * $multiplier;
+            $subtotal['gross'] += $gross * $multiplier;
+            $subtotal['tax'] += ($gross - $net) * $multiplier;
+        }
+        
+        // Versand
+        if (get_option('wlc_shipping_as_line_item', 'yes') === 'yes') {
+            $shipping_gross = round($order->get_shipping_total() + $order->get_shipping_tax(), 2);
+            $shipping_net = round($order->get_shipping_total(), 2);
+            
+            $subtotal['net'] += $shipping_net * $multiplier;
+            $subtotal['gross'] += $shipping_gross * $multiplier;
+            $subtotal['tax'] += $order->get_shipping_tax() * $multiplier;
+        }
+        
+        return $subtotal;
+    }
+
     private function format_line_items($order, $negative = false) {
         $line_items = array();
         $multiplier = $negative ? -1 : 1;
@@ -421,78 +491,8 @@ public function sync_contact($order) {
             );
         }
         
-        // Gutscheine / Coupons als Rabatte (negative Line Items)
-        $coupon_codes = $order->get_coupon_codes();
-        if (!empty($coupon_codes)) {
-            // Berechne durchschnittlichen Steuersatz aller Artikel EINMAL
-            $average_tax_rate = $this->get_average_tax_rate_for_items($order);
-            
-            foreach ($coupon_codes as $coupon_code) {
-                $coupon = new WC_Coupon($coupon_code);
-                
-                if ($coupon && $coupon->get_id()) {
-                    $coupon_discount = 0;
-                    
-                    foreach ($order->get_items('coupon') as $coupon_item) {
-                        if ($coupon_item->get_code() === $coupon_code) {
-                            // Hole Discount von diesem Item (Bruttobetrag aus WooCommerce)
-                            $coupon_discount = abs($coupon_item->get_discount());
-                            
-                            // WICHTIG: Prüfe, ob es ein Wertgutschein ist (Germanized Plugin)
-                            $is_value_voucher = $this->is_value_voucher($coupon_code);
-                            
-                            if ($is_value_voucher) {
-                                // Wertgutscheine: OHNE Steuer (0%)
-                                // Sie wurden ohne MwSt. verkauft und werden erst bei Einlösung besteuert
-                                $discount_tax_rate = 0; // KEINE Steuer für Wertgutscheine!
-                                $discount_gross = round($coupon_discount, 2);
-                                $discount_net = $discount_gross; // Bei 0% Steuer: netto = brutto
-                                
-                                // Für Wertgutscheine: Menge ist IMMER 1, Betrag wird negativ
-                                $line_items[] = array(
-                                    'type' => 'custom',
-                                    'name' => sprintf(
-                                        __('Wertgutschein: %s', 'lexware-connector-for-woocommerce'),
-                                        $coupon_code
-                                    ),
-                                    'quantity' => 1 * $multiplier,  // Immer 1 (nicht -1)
-                                    'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
-                                    'unitPrice' => array(
-                                        'currency' => $order->get_currency(),
-                                        'netAmount' => $discount_net * -1 * $multiplier,    // Negativ für Rabatt
-                                        'grossAmount' => $discount_gross * -1 * $multiplier, // Negativ für Rabatt
-                                        'taxRatePercentage' => $discount_tax_rate
-                                    )
-                                );
-                            } else {
-                                // Normale Rabatte: Mit Steuer der Artikel
-                                $discount_tax_rate = $average_tax_rate;
-                                $discount_gross = round($coupon_discount, 2);
-                                $discount_net = round($coupon_discount / (1 + ($discount_tax_rate / 100)), 2);
-                                
-                                // Für normale Rabatte: quantity -1, Betrag positiv
-                                $line_items[] = array(
-                                    'type' => 'custom',
-                                    'name' => sprintf(
-                                        __('Rabatt: %s', 'lexware-connector-for-woocommerce'),
-                                        $coupon_code
-                                    ),
-                                    'quantity' => -1 * $multiplier,
-                                    'unitName' => __('Pauschal', 'lexware-connector-for-woocommerce'),
-                                    'unitPrice' => array(
-                                        'currency' => $order->get_currency(),
-                                        'netAmount' => $discount_net * $multiplier,
-                                        'grossAmount' => $discount_gross * $multiplier,
-                                        'taxRatePercentage' => $discount_tax_rate
-                                    )
-                                );
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // WICHTIG: Gutscheine/Coupons werden NICHT mehr als Line Items gesendet!
+        // Sie werden stattdessen als totalDiscountAbsolute in create_invoice() verwendet.
         
         return $line_items;
     }
