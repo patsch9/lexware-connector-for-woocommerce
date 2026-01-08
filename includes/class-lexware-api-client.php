@@ -76,7 +76,7 @@ class WLC_Lexware_API_Client {
     /**
      * Extrahiert den Wertgutschein-Gesamtbetrag aus Order Items
      * 
-     * Wertgutscheine werden von Germanized als separate Items hinzugefügt.
+     * Germanized speichert Wertgutscheine als 'fee' Items mit negativem Betrag.
      * Wir sammeln alle Wertgutschein-Items und geben ihren Gesamtbetrag zurück.
      * 
      * @param WC_Order $order Die WooCommerce Bestellung
@@ -85,10 +85,19 @@ class WLC_Lexware_API_Client {
     private function get_voucher_discount_from_items($order) {
         $voucher_discount = 0.0;
         
+        // Suche in line_items
         foreach ($order->get_items() as $item) {
             if ($this->is_value_voucher_item($item)) {
                 // Der Betrag des Wertgutscheins ist negativ in den Items
                 $voucher_discount += abs((float)$item->get_total());
+            }
+        }
+        
+        // Suche in fee items (wo Germanized Wertgutscheine oft gespeichert werden!)
+        foreach ($order->get_items('fee') as $fee_item) {
+            if ($this->is_value_voucher_item($fee_item)) {
+                // Fee Items haben negative Beträge für Rabatte
+                $voucher_discount += abs((float)$fee_item->get_total());
             }
         }
         
@@ -450,7 +459,7 @@ class WLC_Lexware_API_Client {
             'tax' => 0.0
         );
         
-        // Artikel (OHNE Wertgutscheine)
+        // Artikel (OHNE Wertgutscheine und Fee Items)
         foreach ($order->get_items() as $item) {
             // Überspringe Wertgutschein-Items
             if ($this->is_value_voucher_item($item)) {
