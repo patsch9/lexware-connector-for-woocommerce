@@ -74,34 +74,38 @@ class WLC_Lexware_API_Client {
     }
 
     /**
-     * Extrahiert den Wertgutschein-Gesamtbetrag aus Order Items
+     * Extrahiert Wertgutschein-Informationen aus Order Items
      * 
      * Germanized speichert Wertgutscheine als 'fee' Items mit negativem Betrag.
-     * Wir sammeln alle Wertgutschein-Items und geben ihren Gesamtbetrag zurück.
+     * Wir sammeln alle Wertgutschein-Items und geben sie als Array zurück.
      * 
      * @param WC_Order $order Die WooCommerce Bestellung
-     * @return float Der Gesamtbetrag aller Wertgutscheine
+     * @return array Array mit Wertgutschein-Daten (amount, description)
      */
-    private function get_voucher_discount_from_items($order) {
-        $voucher_discount = 0.0;
+    private function get_voucher_items_from_order($order) {
+        $vouchers = array();
         
         // Suche in line_items
         foreach ($order->get_items() as $item) {
             if ($this->is_value_voucher_item($item)) {
-                // Der Betrag des Wertgutscheins ist negativ in den Items
-                $voucher_discount += abs((float)$item->get_total());
+                $vouchers[] = array(
+                    'amount' => abs((float)$item->get_total()),
+                    'name' => $item->get_name()
+                );
             }
         }
         
         // Suche in fee items (wo Germanized Wertgutscheine oft gespeichert werden!)
         foreach ($order->get_items('fee') as $fee_item) {
             if ($this->is_value_voucher_item($fee_item)) {
-                // Fee Items haben negative Beträge für Rabatte
-                $voucher_discount += abs((float)$fee_item->get_total());
+                $vouchers[] = array(
+                    'amount' => abs((float)$fee_item->get_total()),
+                    'name' => $fee_item->get_name()
+                );
             }
         }
         
-        return round($voucher_discount, 2);
+        return $vouchers;
     }
 
     public function sync_contact($order) {
@@ -217,21 +221,33 @@ class WLC_Lexware_API_Client {
         // Hole Line Items (ohne Wertgutscheine - diese werden separat verarbeitet)
         $line_items = $this->format_line_items($order);
         
-        // Extrahiere Wertgutschein-Betrag aus Order Items (Germanized)
-        $voucher_discount = $this->get_voucher_discount_from_items($order);
+        // Füge Wertgutscheine als eigene Line Items hinzu (mit 0% Steuersatz)
+        $voucher_items = $this->get_voucher_items_from_order($order);
+        foreach ($voucher_items as $voucher) {
+            $line_items[] = array(
+                'type' => 'custom',
+                'name' => $voucher['name'],
+                'description' => 'Einlösung Gutschein',
+                'quantity' => -1,  // Negativ für Rabatt
+                'unitName' => __('Stück', 'lexware-connector-for-woocommerce'),
+                'unitPrice' => array(
+                    'currency' => $order->get_currency(),
+                    'netAmount' => $voucher['amount'],
+                    'grossAmount' => $voucher['amount'],
+                    'taxRatePercentage' => 0  // 0% Steuersatz für Wertgutscheine
+                )
+            );
+        }
         
         // Berechne sonstige Rabatte (normale Coupons)
         $coupon_discount = $this->get_total_discount($order);
-        
-        // Gesamtrabatt: Wertgutscheine + sonstige Coupons
-        $total_discount = $voucher_discount + $coupon_discount;
         
         // Zusammenfassung von Netto und Brutto (ohne Rabatte)
         $items_subtotal = $this->calculate_items_subtotal($order);
         
         // Berechne die finalen Totals NACH Rabattabzug
-        $final_net = round($items_subtotal['net'] - $total_discount, 2);
-        $final_gross = round($items_subtotal['gross'] - $total_discount, 2);
+        $final_net = round($items_subtotal['net'] - $coupon_discount, 2);
+        $final_gross = round($items_subtotal['gross'] - $coupon_discount, 2);
         $final_tax = round($final_gross - $final_net, 2);
         
         $invoice_data = array(
@@ -243,7 +259,7 @@ class WLC_Lexware_API_Client {
                 'totalNetAmount' => $final_net > 0 ? $final_net : 0,
                 'totalGrossAmount' => $final_gross > 0 ? $final_gross : 0,
                 'totalTaxAmount' => $final_tax > 0 ? $final_tax : 0,
-                'totalDiscountAbsolute' => $total_discount > 0 ? $total_discount : null
+                'totalDiscountAbsolute' => $coupon_discount > 0 ? $coupon_discount : null
             ),
             'taxConditions' => array('taxType' => $tax_type),
             'shippingConditions' => array('shippingDate' => $voucher_date, 'shippingType' => 'delivery'),
@@ -423,7 +439,7 @@ class WLC_Lexware_API_Client {
 
     /**
      * Berechnet den Gesamtrabatt (alle Gutscheine/Coupons zusammen, OHNE Wertgutscheine)
-     * Wertgutscheine werden separat in get_voucher_discount_from_items() behandelt
+     * Wertgutscheine werden als separate Line Items behandelt
      * 
      * @param WC_Order $order Die WooCommerce Bestellung
      * @return float Der Rabattbetrag (ohne Wertgutscheine)
@@ -492,7 +508,7 @@ class WLC_Lexware_API_Client {
         $multiplier = $negative ? -1 : 1;
         
         foreach ($order->get_items() as $item) {
-            // Überspringe Wertgutschein-Items - diese werden nicht als Line Items gesendet
+            // Überspringe Wertgutschein-Items - diese werden nicht als reguläre Line Items gesendet
             if ($this->is_value_voucher_item($item)) {
                 continue;
             }
