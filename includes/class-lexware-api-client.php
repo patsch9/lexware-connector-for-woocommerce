@@ -14,6 +14,7 @@ class WLC_Lexware_API_Client {
     const RATE_LIMIT_REQUESTS = 2; // 2 requests pro Sekunde
     const RATE_LIMIT_WINDOW = 1; // 1 Sekunde
     const MAX_RETRIES = 3; // Exponential Backoff: max 3 Retries
+    const VOUCHER_PREFIX = 'Wertgutschein'; // Germanized Wertgutschein Präfix
     
     private $api_key;
     private $last_request_time = 0;
@@ -59,133 +60,143 @@ class WLC_Lexware_API_Client {
     }
 
     /**
-     * Prüft, ob ein Coupon ein Wertgutschein ist (Germanized Plugin)
+     * Prüft, ob ein Item ein Wertgutschein ist (Germanized Plugin)
      * 
-     * Germanized speichert das Flag als Meta-Feld 'is_voucher' mit Wert 'yes'.
-     * Wertgutscheine wurden ohne MwSt. verkauft und werden erst bei der Einlösung besteuert.
+     * Wertgutscheine werden von Germanized mit einem Präfix gekennzeichnet.
+     * Sie sind ohne MwSt. und werden erst bei Einlösung besteuert.
      * 
-     * @param string $coupon_code Der Coupon-Code
+     * @param WC_Order_Item $item Das Order Item
      * @return bool True wenn Wertgutschein, false sonst
      */
-    private function is_value_voucher($coupon_code) {
-        $coupon = new WC_Coupon($coupon_code);
-        if (!$coupon || !$coupon->get_id()) {
-            return false;
-        }
-        
-        // Germanized nutzt 'is_voucher' Meta-Feld
-        // Siehe: woocommerce-germanized/includes/class-wc-gzd-coupon-helper.php
-        $is_voucher = $coupon->get_meta('is_voucher', true);
-        if ($is_voucher === 'yes') {
-            return true;
-        }
-        
-        return false;
+    private function is_value_voucher_item($item) {
+        $item_name = $item->get_name();
+        return strpos($item_name, self::VOUCHER_PREFIX) === 0;
     }
 
-public function sync_contact($order) {
-    $existing_contact_id = $order->get_meta('_wlc_lexware_contact_id');
-    
-    // Kontaktdaten vorbereiten
-    $contact_data = array(
-        'version' => 0,
-        'roles' => array(
-            'customer' => new stdClass()
-        )
-    );
-    
-    $billing_company = $order->get_billing_company();
-    $is_company = !empty($billing_company);
-    
-    if ($is_company) {
-        // Firmen-Kontakt - Basis
-        $company_data = array(
-            'name' => $billing_company,
-            'contactPersons' => array(
+    /**
+     * Extrahiert den Wertgutschein-Gesamtbetrag aus Order Items
+     * 
+     * Wertgutscheine werden von Germanized als separate Items hinzugefügt.
+     * Wir sammeln alle Wertgutschein-Items und geben ihren Gesamtbetrag zurück.
+     * 
+     * @param WC_Order $order Die WooCommerce Bestellung
+     * @return float Der Gesamtbetrag aller Wertgutscheine
+     */
+    private function get_voucher_discount_from_items($order) {
+        $voucher_discount = 0.0;
+        
+        foreach ($order->get_items() as $item) {
+            if ($this->is_value_voucher_item($item)) {
+                // Der Betrag des Wertgutscheins ist negativ in den Items
+                $voucher_discount += abs((float)$item->get_total());
+            }
+        }
+        
+        return round($voucher_discount, 2);
+    }
+
+    public function sync_contact($order) {
+        $existing_contact_id = $order->get_meta('_wlc_lexware_contact_id');
+        
+        // Kontaktdaten vorbereiten
+        $contact_data = array(
+            'version' => 0,
+            'roles' => array(
+                'customer' => new stdClass()
+            )
+        );
+        
+        $billing_company = $order->get_billing_company();
+        $is_company = !empty($billing_company);
+        
+        if ($is_company) {
+            // Firmen-Kontakt - Basis
+            $company_data = array(
+                'name' => $billing_company,
+                'contactPersons' => array(
+                    array(
+                        'firstName' => $order->get_billing_first_name(),
+                        'lastName' => $order->get_billing_last_name(),
+                        'emailAddress' => $order->get_billing_email(),
+                        'phoneNumber' => $order->get_billing_phone() ?: ''
+                    )
+                )
+            );
+            
+            // Nur hinzufügen wenn Wert vorhanden
+            $tax_number = $order->get_meta('_billing_tax_number');
+            if (!empty($tax_number)) {
+                $company_data['taxNumber'] = $tax_number;
+            }
+            
+            $vat_id = $order->get_meta('_billing_vat_id');
+            if (!empty($vat_id)) {
+                $company_data['vatRegistrationId'] = $vat_id;
+                $company_data['allowTaxFreeInvoices'] = true;
+            }
+            
+            $contact_data['company'] = $company_data;
+        } else {
+            // Privatkunden-Kontakt
+            $contact_data['person'] = array(
+                'firstName' => $order->get_billing_first_name(),
+                'lastName' => $order->get_billing_last_name()
+            );
+        }
+        
+        // Adressen
+        $contact_data['addresses'] = array(
+            'billing' => array(
                 array(
-                    'firstName' => $order->get_billing_first_name(),
-                    'lastName' => $order->get_billing_last_name(),
-                    'emailAddress' => $order->get_billing_email(),
-                    'phoneNumber' => $order->get_billing_phone() ?: ''
+                    'street' => $order->get_billing_address_1(),
+                    'zip' => $order->get_billing_postcode(),
+                    'city' => $order->get_billing_city(),
+                    'countryCode' => $order->get_billing_country()
                 )
             )
         );
         
-        // Nur hinzufügen wenn Wert vorhanden
-        $tax_number = $order->get_meta('_billing_tax_number');
-        if (!empty($tax_number)) {
-            $company_data['taxNumber'] = $tax_number;
+        // Supplement nur wenn vorhanden
+        if ($order->get_billing_address_2()) {
+            $contact_data['addresses']['billing'][0]['supplement'] = $order->get_billing_address_2();
         }
         
-        $vat_id = $order->get_meta('_billing_vat_id');
-        if (!empty($vat_id)) {
-            $company_data['vatRegistrationId'] = $vat_id;
-            $company_data['allowTaxFreeInvoices'] = true;
+        // E-Mail-Adressen
+        if ($order->get_billing_email()) {
+            $contact_data['emailAddresses'] = array(
+                'business' => array($order->get_billing_email())
+            );
         }
         
-        $contact_data['company'] = $company_data;
-    } else {
-        // Privatkunden-Kontakt
-        $contact_data['person'] = array(
-            'firstName' => $order->get_billing_first_name(),
-            'lastName' => $order->get_billing_last_name()
-        );
-    }
-    
-    // Adressen
-    $contact_data['addresses'] = array(
-        'billing' => array(
-            array(
-                'street' => $order->get_billing_address_1(),
-                'zip' => $order->get_billing_postcode(),
-                'city' => $order->get_billing_city(),
-                'countryCode' => $order->get_billing_country()
-            )
-        )
-    );
-    
-    // Supplement nur wenn vorhanden
-    if ($order->get_billing_address_2()) {
-        $contact_data['addresses']['billing'][0]['supplement'] = $order->get_billing_address_2();
-    }
-    
-    // E-Mail-Adressen
-    if ($order->get_billing_email()) {
-        $contact_data['emailAddresses'] = array(
-            'business' => array($order->get_billing_email())
-        );
-    }
-    
-    // Telefonnummern
-    if ($order->get_billing_phone()) {
-        $contact_data['phoneNumbers'] = array(
-            'business' => array($order->get_billing_phone())
-        );
-    }
-    
-    // Kontakt erstellen oder aktualisieren
-    if ($existing_contact_id) {
-        $endpoint = 'contacts/' . $existing_contact_id;
-        $existing = $this->request('GET', $endpoint);
-        if (!is_wp_error($existing) && isset($existing['version'])) {
-            $contact_data['version'] = $existing['version'];
+        // Telefonnummern
+        if ($order->get_billing_phone()) {
+            $contact_data['phoneNumbers'] = array(
+                'business' => array($order->get_billing_phone())
+            );
         }
-        $result = $this->request('PUT', $endpoint, $contact_data);
-    } else {
-        $result = $this->request('POST', 'contacts', $contact_data);
-    }
-    
-    if (is_wp_error($result)) {
+        
+        // Kontakt erstellen oder aktualisieren
+        if ($existing_contact_id) {
+            $endpoint = 'contacts/' . $existing_contact_id;
+            $existing = $this->request('GET', $endpoint);
+            if (!is_wp_error($existing) && isset($existing['version'])) {
+                $contact_data['version'] = $existing['version'];
+            }
+            $result = $this->request('PUT', $endpoint, $contact_data);
+        } else {
+            $result = $this->request('POST', 'contacts', $contact_data);
+        }
+        
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        
+        $contact_id = $result['id'];
+        $order->update_meta_data('_wlc_lexware_contact_id', $contact_id);
+        $order->save();
+        
         return $result;
     }
-    
-    $contact_id = $result['id'];
-    $order->update_meta_data('_wlc_lexware_contact_id', $contact_id);
-    $order->save();
-    
-    return $result;
-}
-
 
     public function create_invoice($order, $contact_id) {
         $finalize = get_option('wlc_finalize_immediately', 'yes') === 'yes';
@@ -194,17 +205,22 @@ public function sync_contact($order) {
         $is_company = !empty($order->get_billing_company());
         $tax_type = $is_company ? 'net' : 'gross';
         
-        // Hole Line Items (ohne Gutscheine/Rabatte)
+        // Hole Line Items (ohne Wertgutscheine - diese werden separat verarbeitet)
         $line_items = $this->format_line_items($order);
         
-        // Berechne Gesamtrabatt (alle Coupons/Gutscheine zusammen)
-        $total_discount = $this->get_total_discount($order);
+        // Extrahiere Wertgutschein-Betrag aus Order Items (Germanized)
+        $voucher_discount = $this->get_voucher_discount_from_items($order);
+        
+        // Berechne sonstige Rabatte (normale Coupons)
+        $coupon_discount = $this->get_total_discount($order);
+        
+        // Gesamtrabatt: Wertgutscheine + sonstige Coupons
+        $total_discount = $voucher_discount + $coupon_discount;
         
         // Zusammenfassung von Netto und Brutto (ohne Rabatte)
         $items_subtotal = $this->calculate_items_subtotal($order);
         
-        // WICHTIG: Berechne die finalen Totals NACH Rabattabzug
-        // Damit Lexware nicht nochmal abzieht
+        // Berechne die finalen Totals NACH Rabattabzug
         $final_net = round($items_subtotal['net'] - $total_discount, 2);
         $final_gross = round($items_subtotal['gross'] - $total_discount, 2);
         $final_tax = round($final_gross - $final_net, 2);
@@ -397,8 +413,11 @@ public function sync_contact($order) {
     }
 
     /**
-     * Berechnet den Gesamtrabatt (alle Gutscheine/Coupons zusammen)
-     * Wird als totalDiscountAbsolute in Lexware übernommen
+     * Berechnet den Gesamtrabatt (alle Gutscheine/Coupons zusammen, OHNE Wertgutscheine)
+     * Wertgutscheine werden separat in get_voucher_discount_from_items() behandelt
+     * 
+     * @param WC_Order $order Die WooCommerce Bestellung
+     * @return float Der Rabattbetrag (ohne Wertgutscheine)
      */
     private function get_total_discount($order) {
         $total_discount = 0.0;
@@ -421,7 +440,7 @@ public function sync_contact($order) {
     }
 
     /**
-     * Berechnet Summen von Artikeln und Versand (ohne Rabatte)
+     * Berechnet Summen von Artikeln und Versand (ohne Rabatte und Wertgutscheine)
      */
     private function calculate_items_subtotal($order, $negative = false) {
         $multiplier = $negative ? -1 : 1;
@@ -431,8 +450,13 @@ public function sync_contact($order) {
             'tax' => 0.0
         );
         
-        // Artikel
+        // Artikel (OHNE Wertgutscheine)
         foreach ($order->get_items() as $item) {
+            // Überspringe Wertgutschein-Items
+            if ($this->is_value_voucher_item($item)) {
+                continue;
+            }
+            
             $net = round($order->get_item_subtotal($item, false), 2);
             $gross = round($order->get_item_subtotal($item, true), 2);
             
@@ -459,6 +483,11 @@ public function sync_contact($order) {
         $multiplier = $negative ? -1 : 1;
         
         foreach ($order->get_items() as $item) {
+            // Überspringe Wertgutschein-Items - diese werden nicht als Line Items gesendet
+            if ($this->is_value_voucher_item($item)) {
+                continue;
+            }
+            
             $product = $item->get_product();
             $tax_class = $product ? $product->get_tax_class() : '';
             $tax_rate = $this->get_tax_rate_for_class($tax_class, $order, $item);
@@ -499,9 +528,6 @@ public function sync_contact($order) {
                 )
             );
         }
-        
-        // WICHTIG: Gutscheine/Coupons werden NICHT mehr als Line Items gesendet!
-        // Sie werden stattdessen als totalDiscountAbsolute in create_invoice() verwendet.
         
         return $line_items;
     }
