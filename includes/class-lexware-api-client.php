@@ -291,7 +291,7 @@ class WLC_Lexware_API_Client {
                 'totalDiscountAbsolute' => $coupon_discount > 0 ? $coupon_discount : null
             ),
             'taxConditions' => array('taxType' => $tax_type),
-            'shippingConditions' => array('shippingType' => 'delivery'),
+            'shippingConditions' => array('shippingType' => 'none'),
             'title' => $this->replace_shortcodes(get_option('wlc_invoice_title', 'Rechnung'), $order),
             'introduction' => $this->replace_shortcodes(get_option('wlc_invoice_introduction', 'Vielen Dank für Ihre Bestellung.'), $order),
             'remark' => $this->replace_shortcodes(get_option('wlc_closing_text', 'Vielen Dank für Ihr Vertrauen.'), $order)
